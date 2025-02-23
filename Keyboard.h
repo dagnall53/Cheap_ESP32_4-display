@@ -3,8 +3,8 @@
 #define _KEYBOARD_H_
 #include <Arduino_GFX_Library.h>
 
-extern Arduino_ST7701_RGBPanel *gfx ;  // declare the gfx structure so I can use GFX commands in Keyboard.cpp
-
+// if v131 extern Arduino_ST7701_RGBPanel *gfx ;  // declare the gfx structure so I can use GFX commands in Keyboard.cpp
+extern Arduino_RGB_Display  *gfx ; //  change if alternate displays !
 
 void keyboard(int type);
 void DrawKey(int Keysize, int x, int rows_down, int width, String text );

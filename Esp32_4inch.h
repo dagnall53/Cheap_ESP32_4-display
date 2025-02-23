@@ -34,7 +34,16 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
   480 /* width */,  480 /* height */,  rgbpanel,
   0 /* rotation */,  true /* auto_flush */,  bus, // as defined in Arduino_DataBus *bus 
   GFX_NOT_DEFINED /* RST */,  st7701_type1_init_operations,  sizeof(st7701_type1_init_operations));
+/*
+ tests WITH gfx (not all tested on each version!!)
+  1.4.3(type 1)  Change  to 'normal'  WRITE_COMMAND_8, 0x20,   // 0x20 normal, 0x21 IPS
+  (comment 23/02/25) 1.5.3 MAKE sure to get latest version (zip) from Git and not Arduino library 1.5.3 update! 
+  Correct Arduino_RGB_Display.h
+   change line 511 in static const uint8_t st7701_type1_init_operations[] 
+      WRITE_COMMAND_8, 0x20,   // 0x20 normal, 0x21 IPS
 
+
+*/
 //** OTHER PINS
 
 #define TFT_BL GFX_BL
@@ -52,8 +61,14 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
 #define I2S_LRCK      2       //2  
 
 
+
 #define TOUCH_INT -1          //-1
 #define TOUCH_RST 38          // -1 (just uses power off?)
+#define TOUCH_SDA  19
+#define TOUCH_SCL  45
+#define TOUCH_WIDTH  480
+#define TOUCH_HEIGHT 480
+
 
 // workss with (https://github.com/moononournation/Arduino_GFX) GFX 1.3.1 where:
 

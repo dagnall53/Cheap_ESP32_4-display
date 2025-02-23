@@ -6,8 +6,9 @@ From scratch build!
 // * Start of Arduino_GFX setting
 
 #include <Arduino_GFX_Library.h>
-//select pin definitions for installed GFX version (test with 1.5.3 and 1.3.1)
-#include "GUITIONESP32-S3-4848S040_GFX_131.h"
+//select pin definitions for installed GFX version (test with 1.3.8. and 1.3.1)
+// Original version for GFX 1.3.1 only. #include "GUITIONESP32-S3-4848S040_GFX_133.h"
+#include "Esp32_4inch.h"
 
 // swipe function needs steady slow movement 
 /*******************************************************************************
@@ -37,7 +38,7 @@ struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Esp
 };
 // use page -100 for any swipe testing 
 // change key (first parameter) to set defaults
-MySettings Default_Settings = { 2, 0, "N2K0183-proto", "12345678", 2002, false, true, true };
+MySettings Default_Settings = { 3, -99, "N2K0183-proto", "12345678", 2002, false, true, true };
 MySettings Saved_Settings;
 MySettings Current_Settings;
 struct Displaysettings {
@@ -77,37 +78,19 @@ int text_offset = 12;      //offset is not equal to height, as subscripts print 
 int text_char_width = 12;  // useful for monotype? only NOT USED YET! Try tft.getTextBounds(string, x, y, &x1, &y1, &w, &h);
 
 void setFont(int font) {
-  /* Options: and max height and offset attribute of GFXGlyphs.
-//see Glyph for "/"! 
- FreeMono8pt7b   10 and -15
- FreeMono12pt7b  14 -15  
- FreeMono18pt7b  21 -22
- FreeMonoBold12pt7b  14, -16
- FreeMonoBold18pt7b  21, -23
- FreeSansBold10pt7b  24
- FreeSansBold18pt7b  42
- FreeSansBold24pt7b  56
 
-
-*/
-
-  switch (font) {
+  switch (font) { //select font and automatically set height/offset based on character '['
     // set the heights and offset to print [ in boxes. Heights in pixels are NOT the point heights!
     case 0:  // SMALL 8pt
       gfx->setFont(&FreeMono8pt7b);
       text_height = (FreeMono8pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono8pt7bGlyphs[0x3D].yOffset);
-      //    text_height = 13; // note height =13 {9+4} +for superscript,  for subscripts  on pt to allow for subscripts?
-      //    text_offset = 10;// start print  down from top left
-      //text_char_width =  FreeMono8pt7bGlyphs[0x3D].width
       text_char_width = 12;
       break;
     case 1:  // standard 12pt
       gfx->setFont(&FreeMono12pt7b);
       text_height = (FreeMono12pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono12pt7bGlyphs[0x3D].yOffset);
-      // text_height=19;
-      // text_offset = 15;
       text_char_width = 12;
 
       break;
@@ -115,8 +98,6 @@ void setFont(int font) {
       gfx->setFont(&FreeMono18pt7b);
       text_height = (FreeMono18pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono18pt7bGlyphs[0x3D].yOffset);
-      //text_height=26;
-      //text_offset = 22;
       text_char_width = 12;
 
       break;
@@ -124,8 +105,6 @@ void setFont(int font) {
       gfx->setFont(&FreeMonoBold12pt7b);
       text_height = (FreeMonoBold12pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMonoBold12pt7bGlyphs[0x3D].yOffset);
-      // text_height=22;
-      // text_offset = 16;
       text_char_width = 12;
 
       break;
@@ -133,8 +112,7 @@ void setFont(int font) {
       gfx->setFont(&FreeMonoBold18pt7b);
       text_height = (FreeMonoBold18pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMonoBold18pt7bGlyphs[0x3D].yOffset);
-      //text_height=31;
-      //text_offset = 23;
+
       text_char_width = 12;
 
       break;
@@ -143,26 +121,19 @@ void setFont(int font) {
       //test
       text_height = (FreeSansBold10pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeSansBold10pt7bGlyphs[0x3D].yOffset);
-      // text_height=22;  //"( height+1
-      // text_offset = 16; //'/
       text_char_width = 12;  // not used yet
 
       break;
     case 6:  //Sans  18 pt
       gfx->setFont(&FreeSansBold18pt7b);
-      //test FreeMono8pt7bGlyphs[0x3D].height, FreeMono8pt7bGlyphs[0x3D].yOffset
       text_height = (FreeSansBold18pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeSansBold18pt7bGlyphs[0x3D].yOffset);
-      //  text_height=34;  //max height in glyph [ +1
-      //  text_offset = 24; //  Abs(yoffset) of /
       text_char_width = 12;  // not used yet
       break;
     case 7:  //Sans  24 pt
       gfx->setFont(&FreeSansBold24pt7b);
       text_height = (FreeSansBold24pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeSansBold24pt7bGlyphs[0x3D].yOffset);
-      // text_height=44;  //Based on ] character max height in glyph +1
-      // text_offset = 33; //  Abs(yoffset) of
       text_char_width = 12;  // not used yet
       break;
     default:
@@ -174,9 +145,7 @@ void setFont(int font) {
       break;
   }
   gfx->setTextSize(1);
-  // text_height = text_height;
-  // text_offset = text_offset;
-  // text_char_width = text_char_width;
+
 }
 
 
@@ -251,11 +220,12 @@ void Display(int page) {
   static int SwipeTestLR, SwipeTestUD;
   static bool RunSetup;
   static unsigned int slowdown;
+  int FS =1; // for font size test
 
   if (page != LastPageselected) { RunSetup = true; }
 
   switch (page) {
-    case -100:  //a test fonts screen
+    case -100:  //a test for Swipes 
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE);
@@ -268,7 +238,6 @@ void Display(int page) {
 
       if (millis() >= slowdown + 10000) {
         slowdown = millis();
-        // font = font + 1;
         gfx->fillScreen(BLACK);
         GFXBoxPrintf(0, 50, 2, "Periodic blank ");
       }
@@ -278,6 +247,29 @@ void Display(int page) {
         GFXBoxPrintf(0, 0, 1, "SwipeTestLR (%i)", SwipeTestLR);
         GFXBoxPrintf(0, 480 - text_height, 1, "SwipeTestUD (%i)", SwipeTestUD);
       };
+
+      break;
+          case -99:  //a test for Screen Colours / fonts 
+      if (RunSetup) {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(WHITE);
+        font = 0;
+        SwipeTestLR = 0;
+        SwipeTestUD = 0;
+        setFont(font);
+        GFXBoxPrintf(0, 250, 3, "-TEST Colours- ");
+      }
+
+      if (millis() >= slowdown + 10000) {
+        slowdown = millis();
+        gfx->fillScreen(BLACK);
+        font=font+1; if (font >10) {font=0;}
+        GFXBoxPrintf(0, 50, 2, "Colours check");
+        
+      }
+      
+      GFXBoxPrintf(0, 100, FS, "Font size %i",FS);
+      DisplayCheck(true);
 
       break;
     case -1:
