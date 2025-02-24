@@ -41,6 +41,24 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
   Correct Arduino_RGB_Display.h
    change line 511 in static const uint8_t st7701_type1_init_operations[] 
       WRITE_COMMAND_8, 0x20,   // 0x20 normal, 0x21 IPS
+1.5.3  (I have manually added an inver command to Arduino_RGB_Display.cpp
+  void Arduino_RGB_Display::invertDisplay(bool i)
+  {
+  _bus->sendCommand((0x0D ^ i) ? 0x20 : 0x21);
+  }
+but it does not "do anything" when I try in code)
+
+ WRITE_COMMAND_8, 0x20,   // 0x20 normal, 0x21 IPS
+    WRITE_C8_D8, 0x3A, 0x60, // 0x70 RGB888, 0x60 RGB666, 0x50 RGB565
+    Gives correct colours
+ TEST:1   
+    WRITE_COMMAND_8, 0x21,   // 0x20 normal, 0x21 IPS
+    WRITE_C8_D8, 0x3A, 0x50, // 0x70 RGB888, 0x60 RGB666, 0x50 RGB565
+    also seems to give correct colours!
+  TEST:2
+    WRITE_COMMAND_8, 0x20,   // 0x20 normal, 0x21 IPS
+    WRITE_C8_D8, 0x3A, 0x50, // 0x70 RGB888, 0x60 RGB666, 0x50 RGB565
+    also correct colours ! giving up on this for now.. 
 
 
 */
@@ -63,7 +81,7 @@ Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
 
 
 #define TOUCH_INT -1          //-1
-#define TOUCH_RST 38          // -1 (just uses power off?)
+#define TOUCH_RST 38          // important not -1
 #define TOUCH_SDA  19
 #define TOUCH_SCL  45
 #define TOUCH_WIDTH  480

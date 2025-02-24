@@ -3,7 +3,7 @@ This project is an initial record of trying to get a cheap 4 inch square touch d
 search Ali express for typicaly  ESP32-S3 4.0 Inch Smart Display for Arduino LVGL WiFi Bluetooth Development Board 86 Box Central Control Panel LCD TFT Module
 
 The display is sold as a Mains panel with one  or two relays, and is usually used for HomeAssistant.
-The display is made by guitron, and demo code is provided. But I had issues trying to get mine to work, mainly as I wished to use standard libraries, and not thoise supplied with the module. examples.
+The display is made by guitron, and demo code is provided. But I had issues trying to get mine to work, mainly as I wished to use standard libraries, and not those supplied with the module. examples.
 
 
 LIBRARIES: 
@@ -21,4 +21,8 @@ Example of saving and reading variables.
 Multiple different 'display pages
 A keyboard that can alter any variable
 a swipe function is now working 
+
+SD seems problematic - I may have a bad board? 
+
+I think its possible to use the Makerfabs examples with GFX 1.5.3 providing you reference the latest esp32_4inch.x from here and not their GFX setups 
 

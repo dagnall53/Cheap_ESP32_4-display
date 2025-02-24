@@ -24,7 +24,16 @@ From scratch build!
 TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
 #include <EEPROM.h>
 #include "fonts.h"
+//For SD card (display page -98 for test)
 
+#include <SD.h> // pins set in GFX .h 
+#include "SPI.h"
+#include "FS.h"
+
+//jpeg
+#include "JpegFunc.h"
+
+#define JPEG_FILENAME_LOGO "/logo.jpg" // logo in jpg on sd card
 //**   structures for my variables (for saving)
 struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Espnow,Listtext size
   int EpromKEY;      // to allow check for clean EEprom and no data stored change in the default will result in eeprom being reset
@@ -38,7 +47,7 @@ struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Esp
 };
 // use page -100 for any swipe testing 
 // change key (first parameter) to set defaults
-MySettings Default_Settings = { 3, -99, "N2K0183-proto", "12345678", 2002, false, true, true };
+MySettings Default_Settings = { 5, -98, "N2K0183-proto", "12345678", 2002, false, true, true };
 MySettings Saved_Settings;
 MySettings Current_Settings;
 struct Displaysettings {
@@ -49,9 +58,14 @@ Displaysettings Display_default = { false, true, false, false, false, false };
 Displaysettings Display_Setting;
 
 struct BarChart {
-  int topleftx, toplefty, bottomrightx, bottomrighty, border, background, barcolour, value, rangemin, rangemax, visible;
+  int topleftx, toplefty, width, height, bordersize, value, rangemin, rangemax, visible; 
+  uint16_t barcolour;
 };
 
+struct Button { int topleftx, toplefty, width, height, bordersize;
+uint16_t barcol, backcol,textcol;
+};
+Button defaultbutton = {20,20,75,75,2,RED,BLACK,WHITE};
 
 struct TouchMemory {
   int consecutive;
@@ -153,24 +167,26 @@ void setup() {
   _null = 0;
   _temp = 0;
   Serial.begin(115200);
+  Serial.println("Test for NMEA Display ");
+  Serial.println(" IDF will throw errors here as one pin is -1!");
   ts.begin();
   ts.setRotation(ROTATION_INVERTED);
 
-  Serial.println("Test of 4848 ST7701 drivers ");
-#ifdef GFX_BL
+  
+  #ifdef GFX_BL
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
-#endif
+  #endif
   // Init Display
   gfx->begin();
   //if GFX> 1.3.1 try and do this as the invert colours write 21h or 20h to 0Dh has been lost from the structure!
-  //gfx->invertDisplay(false);
+  gfx->invertDisplay(false);
   gfx->fillScreen(BLACK);
 
-#ifdef GFX_BL
+  #ifdef GFX_BL
   pinMode(GFX_BL, OUTPUT);
   digitalWrite(GFX_BL, HIGH);
-#endif
+  #endif
 
   EEPROM_READ();  // setup and read saved variables into Saved_Settings
 
@@ -178,6 +194,7 @@ void setup() {
   if (Current_Settings.EpromKEY != Default_Settings.EpromKEY) {
     Current_Settings = Default_Settings;
     EEPROM_WRITE();
+    Serial.println("Setting to EEPROM defaults");
   }
 
   setFont(0);
@@ -190,6 +207,8 @@ void setup() {
   dataline(1, Current_Settings, "Current");
   gfx->println(F("***START Screen***"));
   delay(500);  // .5 seconds
+  SD_Setup();
+
 }
 
 void loop() {
@@ -214,8 +233,9 @@ void TouchCrosshair(int size, uint16_t colour) {
 }
 
 
-void Display(int page) {
+void Display(int page) { // setups for alternate pages to be selected by page.
   static int LastPageselected;
+  // some local variables for tests;
   static int font;
   static int SwipeTestLR, SwipeTestUD;
   static bool RunSetup;
@@ -272,6 +292,26 @@ void Display(int page) {
       DisplayCheck(true);
 
       break;
+ case -98:  //a test for SD
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        jpegDraw(JPEG_FILENAME_LOGO, jpegDrawCallback, true /* useBigEndian */,
+             0 /* x */, 0 /* y */, gfx->width() /* widthLimit */, gfx->height() /* heightLimit */);
+        GFXBoxPrintf(0, 140, 2,WHITE,BLUE, "P-98 Testing SD\n");
+        gfx->println(" use three finger touch to renew dir listing");
+
+      }
+      if (ts.touches > 2){
+        gfx->fillScreen(BLUE);
+        GFXBoxPrintf(0, 0, 2,WHITE,BLUE, "SD Contents");
+         listDir(SD, "/", 0);
+      }
+
+      
+
+  break;
     case -1:
       if (RunSetup) {
         gfx->fillScreen(BLACK);
@@ -372,7 +412,7 @@ void DisplayCheck(bool invertcheck) {
       if (Color > 5) {
         Color = 0;
         ips = !ips;
-        //gfx->invertDisplay(ips);}
+        gfx->invertDisplay(ips);
       }
       gfx->fillRect(300, text_height, 180, text_height * 2, BLACK);
       gfx->setTextColor(WHITE);
@@ -686,12 +726,29 @@ void Writeat(int h, int v, const char* text) {
   Writeat(h, v, 1, text);
 }
 
+void WriteinBox(int h, int v, int size, const char* TEXT,uint16_t TextColor,uint16_t BackColor) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
+  gfx->fillRect(h, v, 480, text_height * size, BackColor);
+  gfx->setTextColor(TextColor);
+  gfx->setTextSize(size);
+  Writeat(h, v, size, TEXT);  // text offset is dealt with in write at
+}
 void WriteinBox(int h, int v, int size, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
   gfx->fillRect(h, v, 480, text_height * size, WHITE);
   gfx->setTextColor(BLACK);
   gfx->setTextSize(size);
   Writeat(h, v, size, TEXT);  // text offset is dealt with in write at
 }
+
+void GFXBoxPrintf(int h, int v, int size, uint16_t TextColor,uint16_t BackColor, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
+  static char msg[300] = { '\0' };                       // used in message buildup
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, 128, fmt, args);
+  va_end(args);
+  int len = strlen(msg);
+  WriteinBox(h, v, size, msg, TextColor,BackColor);
+}
+
 
 void GFXBoxPrintf(int h, int v, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
   static char msg[300] = { '\0' };                       // used in message buildup
@@ -822,4 +879,85 @@ void EventTiming(String input, int number) {  // Event timing, Usage START, STOP
     reads = 0;
     calls = 0;
   }
+}
+
+
+//SD and image functions  include #include "JpegFunc.h"
+static int jpegDrawCallback(JPEGDRAW *pDraw) {
+  // Serial.printf("Draw pos = %d,%d. size = %d x %d\n", pDraw->x, pDraw->y, pDraw->iWidth, pDraw->iHeight);
+  gfx->draw16bitBeRGBBitmap(pDraw->x, pDraw->y, pDraw->pPixels, pDraw->iWidth, pDraw->iHeight);
+  return 1;
+}
+
+
+void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
+    Serial.printf("Listing directory: %s\n", dirname);
+    gfx->printf("Listing directory: %s\n", dirname);
+    File root = fs.open(dirname);
+    if(!root){
+        Serial.println("Failed to open directory");
+        return;
+    }
+    if(!root.isDirectory()){
+        Serial.println("Not a directory");
+        return;
+    }
+
+    File file = root.openNextFile();
+    while(file){
+        if(file.isDirectory()){
+            Serial.print("  DIR : ");
+            Serial.println(file.name());
+            gfx->print("  DIR : ");gfx->println(file.name());
+            if(levels){
+                listDir(fs, file.path(), levels -1);
+            }
+        } else {
+            Serial.print("  FILE: ");
+            Serial.print(file.name());gfx->print("  FILE : ");gfx->println(file.name());
+            Serial.print("  SIZE: ");
+            Serial.println(file.size());
+        }
+        file = root.openNextFile();
+    }
+}
+
+void SD_Setup(){
+      
+    SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
+    if(!SD.begin(SD_CS)){
+        Serial.println("Card Mount Failed");
+        return;
+    } else {
+      unsigned long start = millis();
+    jpegDraw(JPEG_FILENAME_LOGO, jpegDrawCallback, true /* useBigEndian */,
+             0 /* x */, 0 /* y */, gfx->width() /* widthLimit */, gfx->height() /* heightLimit */);
+    Serial.printf("Time used: %lums\n", millis() - start);
+
+    }
+    uint8_t cardType = SD.cardType();
+
+    if(cardType == CARD_NONE){
+        Serial.println("No SD card attached");
+        return;
+    }
+
+    Serial.print("SD Card Type: ");
+    if(cardType == CARD_MMC){
+        Serial.println("MMC");
+    } else if(cardType == CARD_SD){
+        Serial.println("SDSC");
+    } else if(cardType == CARD_SDHC){
+        Serial.println("SDHC");
+    } else {
+        Serial.println("UNKNOWN");
+    }
+
+    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    Serial.println("*** SD card contents  (to three levels) ***");
+
+    listDir(SD, "/", 3);
+
+
 }
