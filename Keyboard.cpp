@@ -40,7 +40,7 @@ void keyboard(int type) {
  //Serial.printf(" setup keyboard %i  was%i \n",type,lasttype);
   if (type == -1){lasttype=6; return;} // silly number to reset things
   if (lasttype == type) {return;}
-  Serial.printf("*** Start keyboard %i  %i \n",type,lasttype);
+  Serial.printf("\n*** Start keyboard type %i  last type%i \n",type,lasttype);
   lasttype=type;
   ///gfx->setFont(&FreeMonoBold18pt7b);
   oldheight=text_height;

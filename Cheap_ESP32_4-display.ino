@@ -32,22 +32,32 @@ TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WID
 
 //jpeg
 #include "JpegFunc.h"
-
 #define JPEG_FILENAME_LOGO "/logo.jpg" // logo in jpg on sd card
+//audio 
+#include "Audio.h"
+#define AUDIO_FILENAME_01 "/ChildhoodMemory.mp3"
+#define AUDIO_FILENAME_02 "/SoundofSilence.mp3"
+#define AUDIO_FILENAME_03 "/MoonlightBay.mp3"
+#define AUDIO_FILENAME_START "/ship-bell.mp3"
+//set up Audio
+Audio audio;
+
+
 //**   structures for my variables (for saving)
 struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Espnow,Listtext size
   int EpromKEY;      // to allow check for clean EEprom and no data stored change in the default will result in eeprom being reset
   int DisplayPage;   // start page after defaults (currently -100 to show fonts data)
   char ssid[16];
   char password[16];
-  int UDP_PORT;
+  char UDP_PORT[5]; // hold udp port as char to make using keyboard easier for now
   bool UDP_ON;
   bool Serial_on;
   bool ESP_NOW_ON;
 };
+int UDP_PORT_NUMBER;
 // use page -100 for any swipe testing 
 // change key (first parameter) to set defaults
-MySettings Default_Settings = { 5, -98, "N2K0183-proto", "12345678", 2002, false, true, true };
+MySettings Default_Settings = { 2, -1, "N2K0183-proto", "12345678", "2002", false, true, true };
 MySettings Saved_Settings;
 MySettings Current_Settings;
 struct Displaysettings {
@@ -62,10 +72,10 @@ struct BarChart {
   uint16_t barcolour;
 };
 
-struct Button { int topleftx, toplefty, width, height, bordersize;
-uint16_t barcol, backcol,textcol;
+struct Button { int h, v, width, height, bordersize;
+uint16_t backcol,textcol,bordercol;
 };
-Button defaultbutton = {20,20,75,75,2,RED,BLACK,WHITE};
+Button defaultbutton = {20,20,75,75,2,BLACK,WHITE,BLUE};
 
 struct TouchMemory {
   int consecutive;
@@ -79,6 +89,8 @@ struct TouchMemory {
 TouchMemory TouchData;
 
 int _null, _temp;  //null pointers
+struct NMEA_DATA{
+int depth,sog,stw,windspeed,winddir;};
 
 
 
@@ -90,6 +102,313 @@ int caps = 0;
 int text_height = 12;      //so we can get them if we change heights etc inside functions
 int text_offset = 12;      //offset is not equal to height, as subscripts print lower than 'height'
 int text_char_width = 12;  // useful for monotype? only NOT USED YET! Try tft.getTextBounds(string, x, y, &x1, &y1, &w, &h);
+
+
+//colour order  background, text, border 
+Button TopLeftbutton = {0,0,75,75,5,BLUE,WHITE,BLACK};
+Button TopRightbutton = {405,0,75,75,5,GREEN,WHITE,RED};
+Button SSID ={30,100,420,75,5,WHITE,BLACK,BLUE};
+Button PASSWORD={30,180,420,75,5,WHITE,BLACK,BLUE};
+Button UDPPORT={30,260,420,75,5,WHITE,BLACK,BLUE}; 
+
+void Display(int page) { // setups for alternate pages to be selected by page.
+  static int LastPageselected;
+  // some local variables for tests;
+  static int font;
+  static int SwipeTestLR, SwipeTestUD,volume;
+  static bool RunSetup;
+  static unsigned int slowdown;
+  static int wind;
+  int FS =1; // for font size test
+
+  if (page != LastPageselected) { RunSetup = true; }
+
+  switch (page) {
+    case -100:  //a test for Swipes 
+      if (RunSetup) {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(WHITE);
+        font = 0;
+        SwipeTestLR = 0;
+        SwipeTestUD = 0;
+        setFont(font);
+        GFXBoxPrintf(0, 250, 3, "-Top page- SETUP- ");
+      }
+
+      if (millis() >= slowdown + 10000) {
+        slowdown = millis();
+        gfx->fillScreen(BLACK);
+        GFXBoxPrintf(0, 50, 2, "Periodic blank ");
+      }
+
+      if (Swipe2(SwipeTestLR, 1, 10, true, SwipeTestUD, 0, 10, false, false)) {
+        Serial.printf(" LR updated %i UD updated %i \n", SwipeTestLR, SwipeTestUD);  // swipe page using (current) TouchData information with LR (true) swipe
+        GFXBoxPrintf(0, 0, 1, "SwipeTestLR (%i)", SwipeTestLR);
+        GFXBoxPrintf(0, 480 - text_height, 1, "SwipeTestUD (%i)", SwipeTestUD);
+      };
+
+      break;
+          case -99:  //a test for Screen Colours / fonts 
+      if (RunSetup) {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(WHITE);
+        font = 0;
+        SwipeTestLR = 0;
+        SwipeTestUD = 0;
+        setFont(font);
+        GFXBoxPrintf(0, 250, 3, "-TEST Colours- ");
+      }
+
+      if (millis() >= slowdown + 10000) {
+        slowdown = millis();
+        gfx->fillScreen(BLACK);
+        font=font+1; if (font >10) {font=0;}
+        GFXBoxPrintf(0, 50, 2, "Colours check");
+        
+      }
+      
+      GFXBoxPrintf(0, 100, FS, "Font size %i",FS);
+      DisplayCheck(true);
+
+      break;
+ case -98:  //a test for SD
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        jpegDraw(JPEG_FILENAME_LOGO, jpegDrawCallback, true /* useBigEndian */,
+             0 /* x */, 0 /* y */, gfx->width() /* widthLimit */, gfx->height() /* heightLimit */);
+        GFXBoxPrintf(0, 140, 2,WHITE,BLUE, "P-98 Testing SD\n");
+        gfx->println(" use three finger touch to renew dir listing");
+
+      }
+      if (ts.touches > 1){
+        gfx->fillScreen(BLUE);
+        GFXBorderBoxPrintf(50, 5, 430,text_height*2, 2,4,WHITE,BLUE,BLACK, "SD Contents\n");
+        gfx->setTextColor(WHITE);
+        listDir(SD, "/", 0);
+      }
+  break;
+    case -90:
+    if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        GFXBoxPrintf(0, 140, 2,WHITE,BLUE, " Testing new buttons\n");
+        //gfx->println(" use three finger touch to renew dir listing");
+
+      }
+      if (millis() >= slowdown + 10000) {
+        slowdown = millis();
+        gfx->fillScreen(BLUE); // clean up redraw buttons
+     // GFXBorderBoxPrintf(TopLeftbutton,1,"LEFT");
+     // GFXBorderBoxPrintf(TopRightbutton,1,"RIGHT");      
+      }
+      if (ts.isTouched) {
+        TouchCrosshair(20); 
+        if (CheckButton(TopLeftbutton)){volume=volume+1; if(volume>21){volume=0;};
+          Serial.println("LEFT");GFXBoxPrintf(80, 0, 2, WHITE,BLUE, " LEFT   %i\n",volume);audio.setVolume(volume);delay(300);}
+        if (CheckButton(TopRightbutton)){volume=volume-1;if(volume<1){volume=21;};
+          Serial.println("RIGHT");GFXBoxPrintf(80, 0,2, WHITE,BLUE, " RIGHT  %i\n",volume);audio.setVolume(volume);delay(300);}
+      if  (!audio.isRunning()){ audio.connecttoFS(SD, AUDIO_FILENAME_02);}
+
+      }
+         
+  break;
+
+      case -10:
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        GFXBorderBoxPrintf(50, 5, 200,text_height*2, 2,4,WHITE,BLUE,BLACK, "SD Contents\n");
+        gfx->setTextColor(WHITE, BLUE);
+        gfx->setTextSize(0);
+        gfx->setCursor(0, 50);
+        //while (ts.sTouched{yield();ts.read; }
+      }
+      setFont(1);
+     // dataline(1, Current_Settings, "Current");
+     gfx->setCursor(0,50);
+      //gfx->println(F(" SHOW SD "));
+      listDir(SD, "/", 0);
+      if (ts.isTouched) {
+        // gfx->fillScreen(BLUE);
+        // GFXBorderBoxPrintf(50, 5, 200,text_height*2, 2,4,WHITE,BLUE,BLACK, "SD Contents\n");
+        // gfx->setTextColor(WHITE);
+        // listDir(SD, "/", 0);
+
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=0;delay(300);}
+      }    
+      
+      break;
+
+    case -4:
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        GFXBoxPrintf(0, 0, 2, "UDP PORT");
+        keyboard(-1);  //reset
+        //while (ts.sTouched{yield(); }
+        keyboard(caps);
+      }
+      
+      Use_Keyboard(Current_Settings.UDP_PORT, sizeof(Current_Settings.UDP_PORT));
+      break;
+
+
+    case -3:
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        GFXBoxPrintf(0, 0, 2, "Password");
+        keyboard(-1);  //reset
+        //while (ts.sTouched{yield(); }
+        keyboard(caps);
+      }
+      
+      Use_Keyboard(Current_Settings.password, sizeof(Current_Settings.password));
+      break;
+
+
+    case -2:
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        GFXBoxPrintf(0, 0, 2, "SSID");
+        keyboard(-1);  //reset
+        //while (ts.sTouched{yield(); }
+        keyboard(caps);
+      }
+      
+      Use_Keyboard(Current_Settings.ssid, sizeof(Current_Settings.ssid));
+      break;
+    case -1:
+      if (RunSetup) {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(WHITE, BLACK);
+        gfx->setTextSize(1);
+        gfx->setCursor(180, 180);      
+        GFXBorderBoxPrintf(SSID,2,Current_Settings.ssid);
+      GFXBorderBoxPrintf(PASSWORD,2,Current_Settings.password);
+      GFXBorderBoxPrintf(UDPPORT,2,Current_Settings.UDP_PORT);
+      setFont(0);
+      dataline(1, Current_Settings, "Current");
+      setFont(1);
+      //while (ts.sTouched{yield(); Serial.println("yeilding -1");}
+      }
+      
+      
+
+
+      if (ts.isTouched) {
+
+        if (CheckButton(SSID)){Current_Settings.DisplayPage=-2;};
+        if (CheckButton(PASSWORD)){Current_Settings.DisplayPage=-3;};
+        if (CheckButton(UDPPORT)){Current_Settings.DisplayPage=-4;};
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
+      }    
+      
+      break;
+    case 0:
+      if (RunSetup) {
+        gfx->fillScreen(BLACK);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        GFXBoxPrintf(0, 50, 3, "-Top page-");
+        //while (ts.sTouched{yield(); }
+      }
+      if (millis() > slowdown + 10000) {
+        slowdown = millis();
+              setFont(0);
+      dataline(1, Current_Settings, "Current");
+      setFont(1);
+        
+      }
+      if (ts.isTouched) {
+        TouchCrosshair(20); 
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-10;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
+     }
+      break;
+    case 1:
+      if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 1 -DEPTH");
+        //while (ts.sTouched{yield(); }
+        //keyboard(-1);  //reset
+      }
+      if (millis() > slowdown + 1000) {
+        slowdown = millis();
+        dataline(1, Current_Settings, "Current");
+      }
+      if (ts.isTouched) {
+        TouchCrosshair(20); 
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
+     }
+
+      break;
+    case 2:
+    if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 2 -SPEED");
+        //while (ts.sTouched{yield(); }
+        //keyboard(-1);  //reset
+      }
+      if (millis() > slowdown + 1000) {
+        slowdown = millis();
+        dataline(1, Current_Settings, "Current");
+      }
+      if (ts.isTouched) {
+        TouchCrosshair(20); 
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
+     }
+
+      break;
+case 3:
+    if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(0);
+        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 3 -WIND");
+        //while (ts.sTouched{yield(); }
+        //keyboard(-1);  //reset
+      gfx->fillCircle(240,240,240,BLACK);
+      gfx->fillCircle(240,240,200,BLUE);
+      for (int i=0;i<36;i++){gfx->fillArc(240,240,200,150,i*10,(i*10)+1,BLACK); }
+      }
+      if (millis() > slowdown + 1000) {
+        slowdown = millis();
+       // dataline(1, Current_Settings, "Current");
+      }
+     gfx->fillArc(240,240,140,10,wind,(wind)+1,RED);
+     wind=wind+1; if (wind>360) {wind=0;}
+
+
+      if (ts.isTouched) {
+        TouchCrosshair(20); 
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=1;delay(300);} //loop to page 1
+     }
+
+      break;
+
+    default:
+      if (RunSetup) { gfx->fillScreen(BLACK); 
+      //while (ts.sTouched{yield(); }
+      }
+
+      gfx->setCursor(180, 180);
+      GFXBoxPrintf(50, 140, 2, "* Page %i", page);
+      break;
+  }
+  LastPageselected = page;
+  RunSetup = false;
+}
 
 void setFont(int font) {
 
@@ -209,11 +528,13 @@ void setup() {
   delay(500);  // .5 seconds
   SD_Setup();
 
+  Audio_setup();
+
 }
 
 void loop() {
   int unused;
-  static int swipe;
+  //
   //DisplayCheck(false);
   //EventTiming("START");
   ts.read();
@@ -221,174 +542,22 @@ void loop() {
   Display(Current_Settings.DisplayPage);  //EventTiming("STOP");
   //EventTiming(" loop time touch sample display");
   //Use_Keyboard(Current_Settings.password,sizeof(Current_Settings.password));
+  audio.loop(); //
+  vTaskDelay(1);    // Audio is distorted without this?? used in https://github.com/schreibfaul1/ESP32-audioI2S/blob/master/examples/plays%20all%20files%20in%20a%20directory/plays_all_files_in_a_directory.ino
+  //.... (audio.isRunning()){   delay(100);gfx->println("Playing Ships bells"); Serial.println("Waiting for bells to finish!");}
 }
 
 
 void TouchCrosshair(int size) {
-  TouchCrosshair(size, WHITE);
+ for (int i = 0; i < (ts.touches); i++) {
+  TouchCrosshair(i, size, WHITE);}
 }
-void TouchCrosshair(int size, uint16_t colour) {
-  gfx->drawFastVLine(ts.points[0].x, ts.points[0].y - size, 2 * size, colour);
-  gfx->drawFastHLine(ts.points[0].x - size, ts.points[0].y, 2 * size, colour);
+void TouchCrosshair(int point, int size, uint16_t colour) {
+  gfx->setCursor(ts.points[point].x, ts.points[point].y);
+  gfx->printf("%i",point);
+  gfx->drawFastVLine(ts.points[point].x, ts.points[point].y - size, 2 * size, colour);
+  gfx->drawFastHLine(ts.points[point].x - size, ts.points[point].y, 2 * size, colour);
 }
-
-
-void Display(int page) { // setups for alternate pages to be selected by page.
-  static int LastPageselected;
-  // some local variables for tests;
-  static int font;
-  static int SwipeTestLR, SwipeTestUD;
-  static bool RunSetup;
-  static unsigned int slowdown;
-  int FS =1; // for font size test
-
-  if (page != LastPageselected) { RunSetup = true; }
-
-  switch (page) {
-    case -100:  //a test for Swipes 
-      if (RunSetup) {
-        gfx->fillScreen(BLACK);
-        gfx->setTextColor(WHITE);
-        font = 0;
-        SwipeTestLR = 0;
-        SwipeTestUD = 0;
-        setFont(font);
-        GFXBoxPrintf(0, 250, 3, "-Top page- SETUP- ");
-      }
-
-      if (millis() >= slowdown + 10000) {
-        slowdown = millis();
-        gfx->fillScreen(BLACK);
-        GFXBoxPrintf(0, 50, 2, "Periodic blank ");
-      }
-
-      if (Swipe2(SwipeTestLR, 1, 10, true, SwipeTestUD, 0, 10, false, false)) {
-        Serial.printf(" LR updated %i UD updated %i \n", SwipeTestLR, SwipeTestUD);  // swipe page using (current) TouchData information with LR (true) swipe
-        GFXBoxPrintf(0, 0, 1, "SwipeTestLR (%i)", SwipeTestLR);
-        GFXBoxPrintf(0, 480 - text_height, 1, "SwipeTestUD (%i)", SwipeTestUD);
-      };
-
-      break;
-          case -99:  //a test for Screen Colours / fonts 
-      if (RunSetup) {
-        gfx->fillScreen(BLACK);
-        gfx->setTextColor(WHITE);
-        font = 0;
-        SwipeTestLR = 0;
-        SwipeTestUD = 0;
-        setFont(font);
-        GFXBoxPrintf(0, 250, 3, "-TEST Colours- ");
-      }
-
-      if (millis() >= slowdown + 10000) {
-        slowdown = millis();
-        gfx->fillScreen(BLACK);
-        font=font+1; if (font >10) {font=0;}
-        GFXBoxPrintf(0, 50, 2, "Colours check");
-        
-      }
-      
-      GFXBoxPrintf(0, 100, FS, "Font size %i",FS);
-      DisplayCheck(true);
-
-      break;
- case -98:  //a test for SD
-      if (RunSetup) {
-        gfx->fillScreen(BLUE);
-        gfx->setTextColor(WHITE);
-        setFont(0);
-        jpegDraw(JPEG_FILENAME_LOGO, jpegDrawCallback, true /* useBigEndian */,
-             0 /* x */, 0 /* y */, gfx->width() /* widthLimit */, gfx->height() /* heightLimit */);
-        GFXBoxPrintf(0, 140, 2,WHITE,BLUE, "P-98 Testing SD\n");
-        gfx->println(" use three finger touch to renew dir listing");
-
-      }
-      if (ts.touches > 2){
-        gfx->fillScreen(BLUE);
-        GFXBoxPrintf(0, 0, 2,WHITE,BLUE, "SD Contents");
-         listDir(SD, "/", 0);
-      }
-
-      
-
-  break;
-    case -1:
-      if (RunSetup) {
-        gfx->fillScreen(BLACK);
-        gfx->setTextColor(WHITE, BLACK);
-        gfx->setTextSize(1);
-        gfx->setCursor(180, 180);
-      }
-      setFont(2);
-      dataline(1, Current_Settings, "Current");
-      gfx->println(F("SETTINGS PAGEs -  swipe 2,4 "));
-      setFont(0);
-      // Swipe (TouchData, Current_Settings.DisplayPage, 2, 4, true, true);  // swipe page using (current) TouchData information with LR (true) swipe
-
-      break;
-    case 0:
-      if (RunSetup) {
-        gfx->fillScreen(BLACK);
-        gfx->setTextColor(WHITE);
-        setFont(0);
-        GFXBoxPrintf(0, 50, 3, "-Top page-");
-      }
-      if (millis() > slowdown + 10000) {
-        slowdown = millis();
-        dataline(1, Current_Settings, "Current");
-      }
-      // Swipe(TouchData, Current_Settings.DisplayPage, 0, 4, true, true);  // swipe page using (current) TouchData information with LR (true) swipe
-      if (ts.isTouched) {
-        TouchCrosshair(20);
-      }
-
-      break;
-    case 1:
-      if (RunSetup) {
-        gfx->fillScreen(BLUE);
-        gfx->setTextColor(WHITE);
-        setFont(0);
-        GFXBoxPrintf(0, 140, 2, "P1 Testing Set Password");
-        keyboard(-1);  //reset
-      }
-      if (millis() > slowdown + 1000) {
-        slowdown = millis();
-        dataline(1, Current_Settings, "Current");
-      }
-
-      //setup keyboard if not showing
-      keyboard(caps);
-      Use_Keyboard(Current_Settings.password, sizeof(Current_Settings.password));
-      break;
-    case 2:
-      if (RunSetup) {
-        gfx->fillScreen(BLUE);
-        gfx->setTextColor(WHITE);
-        GFXBoxPrintf(0, 140, 2, "P2 Set ssid");
-        keyboard(-1);  //reset
-      }
-      if (millis() > slowdown + 1000) {
-        slowdown = millis();
-        dataline(1, Current_Settings, "Current");
-      }
-
-
-      keyboard(caps);
-      Use_Keyboard(Current_Settings.ssid, sizeof(Current_Settings.ssid));
-      break;
-
-    default:
-      if (RunSetup) { gfx->fillScreen(BLACK); }
-
-      gfx->setCursor(180, 180);
-      GFXBoxPrintf(50, 140, 2, "* Page %i", page);
-      break;
-  }
-  LastPageselected = page;
-  RunSetup = false;
-}
-
-
 
 
 void DisplayCheck(bool invertcheck) {
@@ -491,23 +660,29 @@ bool SwipedFarEnough(TouchMemory sampleA, TouchMemory sampleB, int range) {
   return ((abs(H) >= range) || abs(V) >= range);
 }
 
+bool CheckButton(Button button){
+  //bool XYinBox(int touchx,int touchy, int h,int v,int width,int height){
+    return (XYinBox(ts.points[0].x, ts.points[0].y,button.h,button.v,button.width,button.height) );
+  }
+
+
 void Use_Keyboard(char* DATA, int sizeof_data) {
   static unsigned long lastkeypressed, last_Displayed;
   static bool KeyPressUsed;
-  static bool KeyCommand;
+  static bool Command_Key;
+  static bool Keyboardinuse;
   static bool VariableChanged = false;
-  char KEY[6];
+  char KEY[6]; //array used to pass the character on the key 
   static char Local_var[30];
-
   int result_positionX, result_positionY;
-  result_positionX = KEYBOARD_X();
-  result_positionY = KEYBOARD_Y() - (3 * text_height) - 5;
+  result_positionX = KEYBOARD_X()+5;
+  result_positionY = KEYBOARD_Y() - (3 * text_height);
 
-  if ((!VariableChanged) || (millis() > last_Displayed)) {
+  if (!VariableChanged && !Keyboardinuse) {
     strcpy(Local_var, DATA);
+    Serial.printf(" !variable changed  <%s>\n",Local_var);
     WriteinBox(result_positionX, result_positionY, 2, Local_var);
-    VariableChanged = true;
-    last_Displayed = millis() + 500;
+    Keyboardinuse=true;
   }
   int st;
   if ((ts.isTouched)) {
@@ -519,7 +694,7 @@ void Use_Keyboard(char* DATA, int sizeof_data) {
     Serial.printf(" Keyboard check inputsizeof<%i>   sizeof_here *data(%i)   currentlen<%i>\n", sizeof_data, sizeof(*DATA), strlen(Local_var));
     KeyPressUsed = true;
     lastkeypressed = millis();
-    KeyCommand = false;
+    Command_Key = false;
     //Serial.printf(" Key test %s \n",KEY);
     if (!strcmp(KEY, "^")) {
       caps = caps + 1;
@@ -531,35 +706,38 @@ void Use_Keyboard(char* DATA, int sizeof_data) {
       ///gfx->setFont(&FreeMono8pt7b);
       //text_height=8; //(see the name!!)
       //font_offset = text_height - 2;  // lift slightly?
-      KeyCommand = true;
+      Command_Key = true;
     }
     if (!strcmp(KEY, "DEL")) {
       Local_var[strlen(Local_var) - 1] = '\0';  // NOTE single inverted comma !!!
-      KeyCommand = true;
+      Command_Key = true;
     }
     if (!strcmp(KEY, "CLR")) {
       Local_var[0] = '\0';
-      KeyCommand = true;
+      Command_Key = true;
     }
     if (!strcmp(KEY, "rst")) {
       strcpy(Local_var, DATA);
+      //Serial.printf(" reset  <%s> \n",Local_var);
       WriteinBox(result_positionX, result_positionY, 2, Local_var);
-      KeyCommand = true;
+      Command_Key = true;
     }
     if (!strcmp(KEY, "ENT")) {
       strcpy(DATA, Local_var);
-      Serial.printf("Updated was %s is  %s", DATA, Local_var);
+      Serial.printf("Updated data: was %s is  %s", DATA, Local_var);
       strncpy(DATA, Local_var, sizeof_data);  // limit_size so we cannot overwrite the original array size
-      KeyCommand = true;
+      Command_Key = true;
       VariableChanged = false;
       EEPROM_WRITE;
-      //Current_Settings.DisplayPage=0; //Reset to page 0
+      Keyboardinuse=false;
+      Current_Settings.DisplayPage=-1; //Always return to settings, page -1
     }
-    if (!KeyCommand) {  //Serial.printf(" adding %s on end of variable<%s>\n",KEY,Local_var);
+    if (!Command_Key) {  //Serial.printf(" adding %s on end of variable<%s>\n",KEY,Local_var);
       strcat(Local_var, KEY);
     }
+    Serial.printf(" end of loop <%s> \n",Local_var);
     WriteinBox(result_positionX, result_positionY, 2, Local_var);
-  }
+    }
   if (!ts.isTouched && KeyPressUsed && (millis() > (250 + lastkeypressed))) { KeyPressUsed = false; }
 }
 
@@ -692,18 +870,18 @@ void EEPROM_READ() {
 //************** display housekeeping ************
 void ScreenShow(int LINE, MySettings A, String Text) {
   //gfx->setTextSize(1);
-  GFXBoxPrintf(0, 0, 1, "%s: Ser<%d> UDP<%d> UDP<%d> ESP<%d>", Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
+  GFXBoxPrintf(0, 0, 1, "%s: Seron<%d> UDPPORT<%s> UDPon<%d> ESPon<%d>", Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
   GFXBoxPrintf(0, text_height, 1, "Page[%i] SSID<%s> PWD<%s>", A.DisplayPage, A.ssid, A.password);
 }
 
 void dataline(int line, MySettings A, String Text) {
   ScreenShow(line, A, Text);
-  Serial.printf("%d Dataline display %s: Ser<%d> UDPPORT<%d> UDP<%d>  ESP<%d> \n ", A.EpromKEY, Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
-  Serial.print("SSID <");
-  Serial.print(A.ssid);
-  Serial.print(">  Password <");
-  Serial.print(A.password);
-  Serial.println("> ");
+  // Serial.printf("%d Dataline display %s: Ser<%d> UDPPORT<%d> UDP<%d>  ESP<%d> \n ", A.EpromKEY, Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
+  // Serial.print("SSID <");
+  // Serial.print(A.ssid);
+  // Serial.print(">  Password <");
+  // Serial.print(A.password);
+  // Serial.println("> ");
 }
 boolean CompStruct(MySettings A, MySettings B) {  // does not check ssid and password
   bool same = false;
@@ -713,7 +891,6 @@ boolean CompStruct(MySettings A, MySettings B) {  // does not check ssid and pas
   if (A.UDP_ON == B.UDP_ON) { same = true; }
   if (A.ESP_NOW_ON == B.ESP_NOW_ON) { same = true; }
   if (A.Serial_on == B.Serial_on) { same = true; }
-
   return same;
 }
 
@@ -725,8 +902,10 @@ void Writeat(int h, int v, int size, const char* text) {  //Write text at h,v (u
 void Writeat(int h, int v, const char* text) {
   Writeat(h, v, 1, text);
 }
-
+// try out void getTextBounds(const char *string, int16_t x, int16_t y, int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
 void WriteinBox(int h, int v, int size, const char* TEXT,uint16_t TextColor,uint16_t BackColor) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
+  int width,height;
+  
   gfx->fillRect(h, v, 480, text_height * size, BackColor);
   gfx->setTextColor(TextColor);
   gfx->setTextSize(size);
@@ -749,7 +928,9 @@ void GFXBoxPrintf(int h, int v, int size, uint16_t TextColor,uint16_t BackColor,
   WriteinBox(h, v, size, msg, TextColor,BackColor);
 }
 
-
+// void GFXBoxPrintf(int h, int v, const char* fmt, ...) {
+//  GFXBoxPrintf(h, v, 1, fmt); 
+// }
 void GFXBoxPrintf(int h, int v, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
   static char msg[300] = { '\0' };                       // used in message buildup
   va_list args;
@@ -766,7 +947,7 @@ void GFXBoxPrintf(int h, int v, int size, const char* fmt, ...) {  //complete ob
   vsnprintf(msg, 128, fmt, args);
   va_end(args);
   int len = strlen(msg);
-  WriteinBox(h, v, size, msg);  // includes size
+  WriteinBox(h, v, size, msg);  // includes font size
 }
 
 
@@ -783,25 +964,39 @@ void GFXPrintf(int h, int v, const char* fmt, ...) {  //complete object type sui
 
 // more general versions including box width size Box draws border OUTside topleft position by 'bordersize'
 
-void WriteinBox(int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
-  gfx->fillRect(h - bordersize, v - bordersize, width + (2 * bordersize), height + (2 * bordersize), bordercol);
-  gfx->fillRect(h, v, width, height, backgroundcol);
+void WriteinBorderBox(int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
+  gfx->fillRect(h , v , width , height , bordercol);
+  gfx->fillRect(h+ bordersize, v+ bordersize, width- (2 * bordersize), height- (2 * bordersize), backgroundcol);
   gfx->setTextColor(textcol);
   gfx->setTextSize(textsize);
-  gfx->setCursor(h, v + (text_offset * textsize));  // offset up/down by OFFSET (!) for GFXFONTS that start at Bottom left. Standard fonts start at TOP LEFT
+  gfx->setCursor(h+bordersize, v + bordersize+ (text_offset * textsize));  // offset up/down by OFFSET (!) for GFXFONTS that start at Bottom left. Standard fonts start at TOP LEFT
   gfx->println(TEXT);
   //reset font ...
   gfx->setTextSize(1);
 }
+
 //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
-void GFXBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+/* same as struct Button { int h, v, width, height, bordersize;
+uint16_t backcol,textcol,barcol;
+}; but button misses out textsize
+*/
+void GFXBorderBoxPrintf(Button button,int textsize,const char* fmt, ...){
   static char msg[300] = { '\0' };                                                                                                                                          // used in message buildup
   va_list args;
   va_start(args, fmt);
   vsnprintf(msg, 128, fmt, args);
   va_end(args);
   int len = strlen(msg);
-  WriteinBox(h, v, width, height, textsize, bordersize, backgroundcol, textcol, bordercol, msg);
+  WriteinBorderBox(button.h, button.v, button.width, button.height, textsize, button.bordersize, button.backcol, button.textcol, button.bordercol, msg);
+}
+void GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+  static char msg[300] = { '\0' };                                                                                                                                          // used in message buildup
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, 128, fmt, args);
+  va_end(args);
+  int len = strlen(msg);
+  WriteinBorderBox(h, v, width, height, textsize, bordersize, backgroundcol, textcol, bordercol, msg);
 }
 
 
@@ -953,11 +1148,35 @@ void SD_Setup(){
         Serial.println("UNKNOWN");
     }
 
-    uint64_t cardSize = SD.cardSize() / (1024 * 1024);
-    Serial.printf("SD Card Size: %lluMB\n", cardSize);
-    Serial.println("*** SD card contents  (to three levels) ***");
+    // uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+    // Serial.printf("SD Card Size: %lluMB\n", cardSize);
+    // Serial.println("*** SD card contents  (to three levels) ***");
 
-    listDir(SD, "/", 3);
+    //listDir(SD, "/", 3);
 
 
 }
+
+//*****   AUDIO ....
+
+
+void Audio_setup(){
+  Serial.println("Audio setup ");
+  audio.setPinout(I2S_BCLK, I2S_LRCK, I2S_DOUT);
+  audio.setVolume(15);  // 0...21
+  if (audio.connecttoFS(SD, AUDIO_FILENAME_START)) {
+    gfx->setCursor(10, 100);
+    delay(200);
+    if (audio.isRunning()){gfx->println("Playing Ships bells");}
+    while (audio.isRunning()){ audio.loop(); vTaskDelay(1); }
+  } else {
+    gfx->setCursor(10, 100);
+    gfx->print(" Failed  audio setup ");
+    Serial.println("Audio setup FAILED");
+  };
+  
+ // audio.connecttoFS(SD, AUDIO_FILENAME_02); // would start some music -- not needed !
+
+}
+
+
