@@ -7,6 +7,8 @@
 extern Arduino_RGB_Display  *gfx ; //  change if alternate displays !
 
 void keyboard(int type);
+void Use_Keyboard(char* DATA, int sizeof_data);
+
 void DrawKey(int Keysize, int x, int rows_down, int width, String text );
 
 bool KeyOver(int x, int y, char * Key,int type);

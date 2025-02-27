@@ -10,21 +10,33 @@ From scratch build!
 // Original version for GFX 1.3.1 only. #include "GUITIONESP32-S3-4848S040_GFX_133.h"
 #include "Esp32_4inch.h"
 
-// swipe function needs steady slow movement 
-/*******************************************************************************
- * End of Arduino_GFX setting  - 
- ******************************************************************************/
-#include <TAMC_GT911.h>
-#define TOUCH_ROTATION ROTATION_NORMAL
-#define TOUCH_MAP_X1 480
-#define TOUCH_MAP_X2 0
-#define TOUCH_MAP_Y1 480
-#define TOUCH_MAP_Y2 0
+//*********** for keyboard*************
+#include "Keyboard.h"
 
+
+#include "Touch.h"
 TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
+/*******************************************************************************
+ * Touch settings- 
+ ******************************************************************************/
+// #include <TAMC_GT911.h>
+// #define TOUCH_ROTATION ROTATION_NORMAL
+// #define TOUCH_MAP_X1 480
+// #define TOUCH_MAP_X2 0
+// #define TOUCH_MAP_Y1 480
+// #define TOUCH_MAP_Y2 0
+
+// TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WIDTH, TOUCH_HEIGHT);
+
+
+
 #include <EEPROM.h>
 #include "fonts.h"
-//For SD card (display page -98 for test)
+#include "FreeMonoBold8pt7b.h"
+#include "FreeMonoBold27pt7b.h"
+#include "FreeSansBold30pt7b.h"
+#include "FreeSansBold50pt7b.h"
+//For SD card (see display page -98 for test)
 
 #include <SD.h> // pins set in GFX .h 
 #include "SPI.h"
@@ -43,21 +55,22 @@ TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WID
 Audio audio;
 
 
-//**   structures for my variables (for saving)
-struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Espnow,Listtext size
-  int EpromKEY;      // to allow check for clean EEprom and no data stored change in the default will result in eeprom being reset
-  int DisplayPage;   // start page after defaults (currently -100 to show fonts data)
-  char ssid[16];
-  char password[16];
-  char UDP_PORT[5]; // hold udp port as char to make using keyboard easier for now
-  bool UDP_ON;
-  bool Serial_on;
-  bool ESP_NOW_ON;
-};
+//**   structures and defauts for my variables 
+#include "Struct.h"
+// struct MySettings {  //key,default page,ssid,PW,Displaypage, UDP,Mode,serial,Espnow,Listtext size
+//   int EpromKEY;      // Key is changed to allow check for clean EEprom and no data stored change in the default will result in eeprom being reset
+//   int DisplayPage;   // start page after defaults (currently -100 to show fonts data)
+//   char ssid[16];
+//   char password[16];
+//   char UDP_PORT[5]; // hold udp port as char to make using keyboard easier for now
+//   bool UDP_ON;
+//   bool Serial_on;
+//   bool ESP_NOW_ON;
+// };
 int UDP_PORT_NUMBER;
 // use page -100 for any swipe testing 
 // change key (first parameter) to set defaults
-MySettings Default_Settings = { 2, -1, "N2K0183-proto", "12345678", "2002", false, true, true };
+MySettings Default_Settings = { 3, 1, "N2K0183-proto", "12345678", "2002", false, true, true };
 MySettings Saved_Settings;
 MySettings Current_Settings;
 struct Displaysettings {
@@ -74,8 +87,10 @@ struct BarChart {
 
 struct Button { int h, v, width, height, bordersize;
 uint16_t backcol,textcol,bordercol;
+bool Keypressed,KeySent;
+unsigned long LastDetect; 
 };
-Button defaultbutton = {20,20,75,75,2,BLACK,WHITE,BLUE};
+Button defaultbutton = {20,20,75,75,2,BLACK,WHITE,BLUE,false,0};
 
 struct TouchMemory {
   int consecutive;
@@ -94,22 +109,69 @@ int depth,sog,stw,windspeed,winddir;};
 
 
 
-//*********** for keyboard*************
-#include "Keyboard.h"
 
-int caps = 0;
-
+String Fontname;
 int text_height = 12;      //so we can get them if we change heights etc inside functions
 int text_offset = 12;      //offset is not equal to height, as subscripts print lower than 'height'
 int text_char_width = 12;  // useful for monotype? only NOT USED YET! Try tft.getTextBounds(string, x, y, &x1, &y1, &w, &h);
 
 
 //colour order  background, text, border 
-Button TopLeftbutton = {0,0,75,75,5,BLUE,WHITE,BLACK};
-Button TopRightbutton = {405,0,75,75,5,GREEN,WHITE,RED};
-Button SSID ={30,100,420,75,5,WHITE,BLACK,BLUE};
-Button PASSWORD={30,180,420,75,5,WHITE,BLACK,BLUE};
-Button UDPPORT={30,260,420,75,5,WHITE,BLACK,BLUE}; 
+Button TopLeftbutton = {0,0,75,75,5,BLUE,WHITE,BLACK,false,0};
+Button TopRightbutton = {405,0,75,75,5,GREEN,WHITE,RED,false,0};
+Button BottomRightbutton = {405,405,75,75,5,GREEN,WHITE,RED,false,0};
+Button BottomLeftbutton = {0,405,75,75,5,BLUE,WHITE,BLACK,false,0};
+
+Button SSID ={30,100,420,35,5,WHITE,BLACK,BLUE,false};
+Button PASSWORD={30,140,420,35,5,WHITE,BLACK,BLUE,false};
+Button UDPPORT={30,180,420,35,5,WHITE,BLACK,BLUE,false}; 
+
+
+#define  On_Off   ? "OFF":"ON"
+
+
+
+// Draw the compass pointer at an angle in degrees
+void drawCompassPointer(int angle, uint16_t COLOUR) {
+  int x_offset, y_offset,tail1x,tail1y,tail2x,tail2y;  // The resulting offsets from the center point
+ // Normalize the angle to the range 0 to 359
+
+  while (angle < 0) angle += 360;
+  while (angle > 359) angle -= 360;
+     // rose radius is default at 100.. so may need to make offsets 2x bigger for 200 size triangel ? 
+  x_offset =240+ (2*getSine(angle));
+  y_offset =240+ (2*getCosine(angle));
+  tail1x=240+(0.6*getSine(angle+20));
+  tail1y=240+(0.6*getCosine(angle+20));
+  tail2x=240+(0.6*getSine(angle-20));
+  tail2y=240+ (0.6*getCosine(angle-20));
+  // The actual drawing command will depend on your display library
+  /*fillTriangle(int16_t x0, int16_t y0,
+                               int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color)
+  */
+  gfx->fillTriangle(x_offset,y_offset,tail1x,tail1y,tail2x,tail2y, COLOUR);
+  
+//  drawLine(ROSE_CENTER_X, ROSE_CENTER_Y, ROSE_CENTER_X + x_offset, ROSE_CENTER_Y + y_offset);
+}
+
+void WindArrow(int wind){
+  static int lastwind;
+      drawCompassPointer(lastwind, BLUE);
+      drawCompassPointer(wind, RED);  
+
+   //erase:
+    //  gfx->fillArc(240,240,180,80,wind+174,(wind)+186,BLUE);
+    //  
+    //  //write
+    //  gfx->fillArc(240,240,200,80,wind-5,(wind)+5,RED);
+     
+    //  gfx->fillArc(240,240,180,80,wind+175,(wind)+185,RED);
+
+     // 
+     // 
+   
+      lastwind=wind;
+}
 
 void Display(int page) { // setups for alternate pages to be selected by page.
   static int LastPageselected;
@@ -118,7 +180,9 @@ void Display(int page) { // setups for alternate pages to be selected by page.
   static int SwipeTestLR, SwipeTestUD,volume;
   static bool RunSetup;
   static unsigned int slowdown;
-  static int wind;
+  static float wind;
+  float temp,oldtemp;
+  String tempstring; 
   int FS =1; // for font size test
 
   if (page != LastPageselected) { RunSetup = true; }
@@ -171,7 +235,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       DisplayCheck(true);
 
       break;
- case -98:  //a test for SD
+    case -98:  //a test for SD
       if (RunSetup) {
         gfx->fillScreen(BLUE);
         gfx->setTextColor(WHITE);
@@ -179,7 +243,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         jpegDraw(JPEG_FILENAME_LOGO, jpegDrawCallback, true /* useBigEndian */,
              0 /* x */, 0 /* y */, gfx->width() /* widthLimit */, gfx->height() /* heightLimit */);
         GFXBoxPrintf(0, 140, 2,WHITE,BLUE, "P-98 Testing SD\n");
-        gfx->println(" use three finger touch to renew dir listing");
+        gfx->println(" use two finger touch to renew dir listing");
 
       }
       if (ts.touches > 1){
@@ -188,9 +252,9 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         gfx->setTextColor(WHITE);
         listDir(SD, "/", 0);
       }
-  break;
+    break;
     case -90:
-    if (RunSetup) {
+     if (RunSetup) {
         gfx->fillScreen(BLUE);
         gfx->setTextColor(WHITE);
         setFont(0);
@@ -205,38 +269,39 @@ void Display(int page) { // setups for alternate pages to be selected by page.
      // GFXBorderBoxPrintf(TopRightbutton,1,"RIGHT");      
       }
       if (ts.isTouched) {
-        TouchCrosshair(20); 
+          TouchCrosshair(20); }
         if (CheckButton(TopLeftbutton)){volume=volume+1; if(volume>21){volume=0;};
           Serial.println("LEFT");GFXBoxPrintf(80, 0, 2, WHITE,BLUE, " LEFT   %i\n",volume);audio.setVolume(volume);delay(300);}
         if (CheckButton(TopRightbutton)){volume=volume-1;if(volume<1){volume=21;};
           Serial.println("RIGHT");GFXBoxPrintf(80, 0,2, WHITE,BLUE, " RIGHT  %i\n",volume);audio.setVolume(volume);delay(300);}
       if  (!audio.isRunning()){ audio.connecttoFS(SD, AUDIO_FILENAME_02);}
 
-      }
-         
-  break;
+               
+     break;
 
-      case -10:
+    case -10:
       if (RunSetup) {
         gfx->fillScreen(BLUE);
         GFXBorderBoxPrintf(50, 5, 200,text_height*2, 2,4,WHITE,BLUE,BLACK, "SD Contents\n");
         gfx->setTextColor(WHITE, BLUE);
         gfx->setTextSize(0);
-        gfx->setCursor(0, 50);
-        //while (ts.sTouched{yield();ts.read; }
+        gfx->setCursor(0, 50);      
+         setFont(1);
+        listDir(SD, "/", 0);
+       if (ts.isTouched) {break;}
       }
-      setFont(1);
+     
      // dataline(1, Current_Settings, "Current");
-     gfx->setCursor(0,50);
+    // gfx->setCursor(0,50);
       //gfx->println(F(" SHOW SD "));
-      listDir(SD, "/", 0);
+
       if (ts.isTouched) {
         // gfx->fillScreen(BLUE);
         // GFXBorderBoxPrintf(50, 5, 200,text_height*2, 2,4,WHITE,BLUE,BLACK, "SD Contents\n");
         // gfx->setTextColor(WHITE);
         // listDir(SD, "/", 0);
 
-        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=0;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=1;delay(300);}
       }    
       
       break;
@@ -247,11 +312,12 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         gfx->setTextColor(WHITE);
         GFXBoxPrintf(0, 0, 2, "UDP PORT");
         keyboard(-1);  //reset
-        //while (ts.sTouched{yield(); }
-        keyboard(caps);
+       
+        keyboard(0);
       }
       
       Use_Keyboard(Current_Settings.UDP_PORT, sizeof(Current_Settings.UDP_PORT));
+      if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-1;delay(300);}
       break;
 
 
@@ -261,11 +327,12 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         gfx->setTextColor(WHITE);
         GFXBoxPrintf(0, 0, 2, "Password");
         keyboard(-1);  //reset
-        //while (ts.sTouched{yield(); }
-        keyboard(caps);
+       
+        keyboard(0);
       }
       
       Use_Keyboard(Current_Settings.password, sizeof(Current_Settings.password));
+      if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-1;delay(300);}
       break;
 
 
@@ -275,79 +342,89 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         gfx->setTextColor(WHITE);
         GFXBoxPrintf(0, 0, 2, "SSID");
         keyboard(-1);  //reset
-        //while (ts.sTouched{yield(); }
-        keyboard(caps);
+       
+        keyboard(0);
       }
       
       Use_Keyboard(Current_Settings.ssid, sizeof(Current_Settings.ssid));
+
+      if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-1;delay(300);}
       break;
-    case -1:
+    case -1:  // this is the main settings page 
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE, BLACK);
         gfx->setTextSize(1);
+        setFont(4);
         gfx->setCursor(180, 180);      
-        GFXBorderBoxPrintf(SSID,2,Current_Settings.ssid);
-      GFXBorderBoxPrintf(PASSWORD,2,Current_Settings.password);
-      GFXBorderBoxPrintf(UDPPORT,2,Current_Settings.UDP_PORT);
-      setFont(0);
+        GFXBorderBoxPrintf(SSID,1,Current_Settings.ssid);
+        GFXBorderBoxPrintf(PASSWORD,1,Current_Settings.password);
+        GFXBorderBoxPrintf(UDPPORT,1,Current_Settings.UDP_PORT);
+        setFont(0);
       dataline(1, Current_Settings, "Current");
       setFont(1);
       //while (ts.sTouched{yield(); Serial.println("yeilding -1");}
       }
-      
-      
 
-
-      if (ts.isTouched) {
 
         if (CheckButton(SSID)){Current_Settings.DisplayPage=-2;};
         if (CheckButton(PASSWORD)){Current_Settings.DisplayPage=-3;};
         if (CheckButton(UDPPORT)){Current_Settings.DisplayPage=-4;};
         if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
-      }    
+  
       
       break;
     case 0:
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE);
-        setFont(0);
+        setFont(3);
         GFXBoxPrintf(0, 50, 3, "-Top page-");
-        //while (ts.sTouched{yield(); }
+        GFXBorderBoxPrintf(TopLeftbutton,1,"select back");
+        GFXBorderBoxPrintf(TopRightbutton,1,"select forwards");
+       
       }
-      if (millis() > slowdown + 10000) {
+      if (millis() > slowdown + 1000) {
         slowdown = millis();
-              setFont(0);
-      dataline(1, Current_Settings, "Current");
-      setFont(1);
-        
-      }
-      if (ts.isTouched) {
-        TouchCrosshair(20); 
-        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-10;delay(300);}
+       }
+
+
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=-1;delay(300);}
         if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
-     }
+
       break;
-    case 1:
+    case 1:  // a test page for fonts
       if (RunSetup) {
         gfx->fillScreen(BLUE);
         gfx->setTextColor(WHITE);
         setFont(0);
-        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 1 -DEPTH");
-        //while (ts.sTouched{yield(); }
-        //keyboard(-1);  //reset
       }
-      if (millis() > slowdown + 1000) {
+      if (millis() > slowdown + 2500) {
         slowdown = millis();
-        dataline(1, Current_Settings, "Current");
+        gfx->fillScreen(BLUE);
+        //wind=wind+9; if (wind>360) {wind=0;gfx->fillScreen(BLUE);} 
+        font=font+1;if (font>15) {font=0;} 
+        //setFont(0);
+        // dataline(1, Current_Settings, "Current"); 
+        temp=12.3;
+        Serial.print("about to set");Serial.print(font); 
+        setFont(font);
+        Serial.print(" setting fontname");Serial.println(Fontname);
+        
+      //GFXBoxPrintf(0,50,  3,BLACK,BLUE, "%4.1f",temp);
+      //GFXBoxPrintf(0,50,  2,BLACK,BLUE, "%4.1f",temp);
+           
       }
-      if (ts.isTouched) {
-        TouchCrosshair(20); 
-        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
-        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
-     }
+       temp= random(-9000, 9000);
+       temp=temp/1000;
+      GFXBoxPrintf(0,10,  1,BLACK,BLUE, "%4.2f",temp);  
+      GFXBoxPrintf(0,250,  2,BLACK,BLUE, "%4.2f",temp);
+      GFXBoxPrintf(0,300,  1,BLACK,BLUE, "Font %i",font);  
 
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=0;delay(100);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(100);}
+
+      //GFXBoxPrintf
       break;
     case 2:
     if (RunSetup) {
@@ -355,18 +432,27 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         gfx->setTextColor(WHITE);
         setFont(0);
         GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 2 -SPEED");
-        //while (ts.sTouched{yield(); }
         //keyboard(-1);  //reset
       }
       if (millis() > slowdown + 1000) {
+        //gfx->fillScreen(BLUE);
         slowdown = millis();
         dataline(1, Current_Settings, "Current");
+        wind=wind+1; if (wind>360) {wind=0;}
+        temp=wind/10.0;
+       // dataline(1, Current_Settings, "Current");
+      
+        setFont(11);
+     // GFXBoxPrintf(0,150,  2, BLUE,BLUE, "%4.2f", oldtemp);  
+      GFXBoxPrintf(0,150,  2, BLACK,BLUE, "%4.2f", temp);
+      oldtemp=temp;  
+      setFont(0);
       }
-      if (ts.isTouched) {
-        TouchCrosshair(20); 
+      
+
         if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
         if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage+1;delay(300);}
-     }
+
 
       break;
 case 3:
@@ -374,32 +460,58 @@ case 3:
         gfx->fillScreen(BLUE);
         gfx->setTextColor(WHITE);
         setFont(0);
-        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 3 -WIND");
-        //while (ts.sTouched{yield(); }
-        //keyboard(-1);  //reset
-      gfx->fillCircle(240,240,240,BLACK);
-      gfx->fillCircle(240,240,200,BLUE);
-      for (int i=0;i<36;i++){gfx->fillArc(240,240,200,150,i*10,(i*10)+1,BLACK); }
+        GFXBoxPrintf(0,480-(text_height*2),  2,BLACK,BLUE, "          PAGE 3 -WIND");     
+        //gfx->fillCircle(240,240,240,BLACK);
+      //gfx->fillCircle(240,240,200,BLUE);
+        setFont(4);
+        gfx->fillArc(240,240,220,200,270-35,270,RED);
+        gfx->fillArc(240,240,220,200,270,270+35,GREEN);
+        for (int i=0;i<24;i++){gfx->fillArc(240,240,239,200,i*15,(i*15)+1,BLACK); }
+        
+      }
+      if (millis() > slowdown + 50) {
+        slowdown = millis();
+        WindArrow(wind);
+        wind=wind+1; if (wind>360) {wind=0;}
+        
+        //Box in middle for wind dir / speed
+        //int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+        GFXBorderBoxPrintf(240-50,240-25, 100,50, 2,5,BLUE,BLACK,BLACK, "%3.0f",wind);
+       // dataline(1, Current_Settings, "Current");
+      }
+
+        if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
+        if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=4;delay(300);} //loop to page 1
+
+
+      break;
+      case 4:   // Quad display
+    if (RunSetup) {
+        gfx->fillScreen(BLUE);
+        gfx->setTextColor(WHITE);
+        setFont(9);
+        GFXBoxPrintf(0,480-(text_height*2),  1,BLACK,BLUE, "quad display");     
       }
       if (millis() > slowdown + 1000) {
         slowdown = millis();
+        wind=wind+1; if (wind>360) {wind=0;}  // sikmulate 4 boxes
+        GFXBorderBoxPrintf(0,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.2f",wind*2.0);
+        GFXBorderBoxPrintf(0,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.1f",wind*3.3);
+        GFXBorderBoxPrintf(240,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.2F",wind*1.1);
+        GFXBorderBoxPrintf(240,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.1F",wind*2.1);
        // dataline(1, Current_Settings, "Current");
       }
-     gfx->fillArc(240,240,140,10,wind,(wind)+1,RED);
-     wind=wind+1; if (wind>360) {wind=0;}
 
-
-      if (ts.isTouched) {
-        TouchCrosshair(20); 
+//        TouchCrosshair(20); 
         if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
         if (CheckButton(TopRightbutton)){Current_Settings.DisplayPage=1;delay(300);} //loop to page 1
-     }
+ 
 
       break;
 
     default:
       if (RunSetup) { gfx->fillScreen(BLACK); 
-      //while (ts.sTouched{yield(); }
+     
       }
 
       gfx->setCursor(180, 180);
@@ -410,17 +522,20 @@ case 3:
   RunSetup = false;
 }
 
+
 void setFont(int font) {
 
   switch (font) { //select font and automatically set height/offset based on character '['
     // set the heights and offset to print [ in boxes. Heights in pixels are NOT the point heights!
     case 0:  // SMALL 8pt
+      Fontname = "FreeMono8pt7b";
       gfx->setFont(&FreeMono8pt7b);
       text_height = (FreeMono8pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono8pt7bGlyphs[0x3D].yOffset);
       text_char_width = 12;
       break;
     case 1:  // standard 12pt
+    Fontname = "FreeMono12pt7b";
       gfx->setFont(&FreeMono12pt7b);
       text_height = (FreeMono12pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono12pt7bGlyphs[0x3D].yOffset);
@@ -428,51 +543,77 @@ void setFont(int font) {
 
       break;
     case 2:  //standard 18pt
+    Fontname = "FreeMono18pt7b";
       gfx->setFont(&FreeMono18pt7b);
       text_height = (FreeMono18pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono18pt7bGlyphs[0x3D].yOffset);
       text_char_width = 12;
 
       break;
-    case 3:  //BOLD 12pt
+      case 3:  //BOLD 8pt
+    Fontname = "FreeMonoBOLD8pt7b";
+      gfx->setFont(&FreeMonoBold8pt7b);
+      text_height = (FreeMonoBold8pt7bGlyphs[0x3D].height) + 1;
+      text_offset = -(FreeMonoBold8pt7bGlyphs[0x3D].yOffset);
+      text_char_width = 12;
+
+      break;
+    case 4:  //BOLD 12pt
+    Fontname = "FreeMonoBOLD12pt7b";
       gfx->setFont(&FreeMonoBold12pt7b);
       text_height = (FreeMonoBold12pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMonoBold12pt7bGlyphs[0x3D].yOffset);
       text_char_width = 12;
 
       break;
-    case 4:  //BOLD 18 pt
+    case 5:  //BOLD 18 pt
+      Fontname = "FreeMonoBold18pt7b";
       gfx->setFont(&FreeMonoBold18pt7b);
       text_height = (FreeMonoBold18pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMonoBold18pt7bGlyphs[0x3D].yOffset);
-
       text_char_width = 12;
-
       break;
-    case 5:  //Sans  12 pt
+    case 6:  //BOLD 27 pt
+      Fontname = "FreeMonoBold27pt7b";
+      gfx->setFont(&FreeMonoBold27pt7b);
+      text_height = (FreeMonoBold27pt7bGlyphs[0x3D].height) + 1;
+      text_offset = -(FreeMonoBold27pt7bGlyphs[0x3D].yOffset);
+      text_char_width = 12;
+      break;
+    case 7:  //SANS BOLD 10 pt
+     Fontname = "FreeSansBold10pt7b";
       gfx->setFont(&FreeSansBold10pt7b);
-      //test
-      text_height = (FreeSansBold10pt7bGlyphs[0x3D].height) + 1;
-      text_offset = -(FreeSansBold10pt7bGlyphs[0x3D].yOffset);
-      text_char_width = 12;  // not used yet
-
+      text_height = (FreeSansBold10pt7bGlyphs[0x38].height) + 1;
+      text_offset = -(FreeSansBold10pt7bGlyphs[0x38].yOffset);
+      text_char_width = 12;
       break;
-    case 6:  //Sans  18 pt
+                case 8:  //SANS BOLD 18 pt
+     Fontname = "FreeSansBold18pt7b";
       gfx->setFont(&FreeSansBold18pt7b);
-      text_height = (FreeSansBold18pt7bGlyphs[0x3D].height) + 1;
-      text_offset = -(FreeSansBold18pt7bGlyphs[0x3D].yOffset);
-      text_char_width = 12;  // not used yet
+      text_height = (FreeSansBold18pt7bGlyphs[0x38].height) + 1;
+      text_offset = -(FreeSansBold18pt7bGlyphs[0x38].yOffset);
+      text_char_width = 12;
       break;
-    case 7:  //Sans  24 pt
-      gfx->setFont(&FreeSansBold24pt7b);
-      text_height = (FreeSansBold24pt7bGlyphs[0x3D].height) + 1;
-      text_offset = -(FreeSansBold24pt7bGlyphs[0x3D].yOffset);
-      text_char_width = 12;  // not used yet
+            case 9:  //sans BOLD 30 pt 
+      Fontname = "FreeSansBold30pt7b";
+      gfx->setFont(&FreeSansBold30pt7b);
+      text_height = (FreeSansBold30pt7bGlyphs[0x38].height) + 1;
+      text_offset = -(FreeSansBold30pt7bGlyphs[0x38].yOffset);
+      text_char_width = 12;
       break;
+      case 10:  //sans BOLD 50 pt 
+      Fontname = "FreeSansBold50pt7b";
+      gfx->setFont(&FreeSansBold50pt7b);
+      text_height = (FreeSansBold50pt7bGlyphs[0x38].height) + 1;
+      text_offset = -(FreeSansBold50pt7bGlyphs[0x38].yOffset);
+      text_char_width = 12;
+      break;
+
     default:
+      Fontname = "FreeMono8pt7b";
       gfx->setFont(&FreeMono8pt7b);
-      text_height = 13;
-      text_offset = 10;
+      text_height = (FreeMono8pt7bGlyphs[0x3D].height) + 1;
+      text_offset = -(FreeMono8pt7bGlyphs[0x3D].yOffset);
       text_char_width = 12;
 
       break;
@@ -660,86 +801,28 @@ bool SwipedFarEnough(TouchMemory sampleA, TouchMemory sampleB, int range) {
   return ((abs(H) >= range) || abs(V) >= range);
 }
 
-bool CheckButton(Button button){
-  //bool XYinBox(int touchx,int touchy, int h,int v,int width,int height){
-    return (XYinBox(ts.points[0].x, ts.points[0].y,button.h,button.v,button.width,button.height) );
+// bool CheckButton(Button button){
+//   static unsigned long LastDetect;
+//   static bool keynoted;
+//   ///bool XYinBox(int touchx,int touchy, int h,int v,int width,int height){
+//     return (XYinBox(ts.points[0].x, ts.points[0].y,button.h,button.v,button.width,button.height) );
+//   }
+bool CheckButton(Button &button ){ // trigger on release. ?needs index (s) to remember which button!
+  //trigger on release! does not sense !isTouched ..  use Keypressed in each button struct to keep track! 
+ 
+  if (ts.isTouched) {
+   if (!button.Keypressed && XYinBox(ts.points[0].x, ts.points[0].y,button.h,button.v,button.width,button.height))
+     { Serial.printf(" Checkbutton  state %i %i \n",ts.isTouched,XYinBox(ts.points[0].x, ts.points[0].y,button.h,button.v,button.width,button.height));
+      button.Keypressed=true;}
+      return false;
+      }else{      
+    if (button.Keypressed){Serial.printf(" Checkbutton released from  %i %i/n",button.h,button.v);
+        button.Keypressed=false ; return true;}
+      }
+     
+  return false;
   }
 
-
-void Use_Keyboard(char* DATA, int sizeof_data) {
-  static unsigned long lastkeypressed, last_Displayed;
-  static bool KeyPressUsed;
-  static bool Command_Key;
-  static bool Keyboardinuse;
-  static bool VariableChanged = false;
-  char KEY[6]; //array used to pass the character on the key 
-  static char Local_var[30];
-  int result_positionX, result_positionY;
-  result_positionX = KEYBOARD_X()+5;
-  result_positionY = KEYBOARD_Y() - (3 * text_height);
-
-  if (!VariableChanged && !Keyboardinuse) {
-    strcpy(Local_var, DATA);
-    Serial.printf(" !variable changed  <%s>\n",Local_var);
-    WriteinBox(result_positionX, result_positionY, 2, Local_var);
-    Keyboardinuse=true;
-  }
-  int st;
-  if ((ts.isTouched)) {
-    st = KeyOver(ts.points[0].x, ts.points[0].y, KEY, caps);
-    //Serial.printf(" Pressure test %i  KEYchr<%i> Bool <%i>\n",ts.points[0].size,ts.points[0].x, ts.points[0].y,KEY,st );
-  }
-
-  if (!KeyPressUsed && (ts.isTouched) && (ts.points[0].size > 35) && (KeyOver(ts.points[0].x, ts.points[0].y, KEY, caps))) {
-    Serial.printf(" Keyboard check inputsizeof<%i>   sizeof_here *data(%i)   currentlen<%i>\n", sizeof_data, sizeof(*DATA), strlen(Local_var));
-    KeyPressUsed = true;
-    lastkeypressed = millis();
-    Command_Key = false;
-    //Serial.printf(" Key test %s \n",KEY);
-    if (!strcmp(KEY, "^")) {
-      caps = caps + 1;
-      if (caps > 2) { caps = 0; }  //NB strcmp returns 0 if NO Difference, else position of non match characters
-                                   ///gfx->setFont(&FreeMonoBold18pt7b);
-                                   //text_height=18; //(see the name!!)
-      //font_offset = text_height - 2;  // lift slightly?
-      keyboard(caps);
-      ///gfx->setFont(&FreeMono8pt7b);
-      //text_height=8; //(see the name!!)
-      //font_offset = text_height - 2;  // lift slightly?
-      Command_Key = true;
-    }
-    if (!strcmp(KEY, "DEL")) {
-      Local_var[strlen(Local_var) - 1] = '\0';  // NOTE single inverted comma !!!
-      Command_Key = true;
-    }
-    if (!strcmp(KEY, "CLR")) {
-      Local_var[0] = '\0';
-      Command_Key = true;
-    }
-    if (!strcmp(KEY, "rst")) {
-      strcpy(Local_var, DATA);
-      //Serial.printf(" reset  <%s> \n",Local_var);
-      WriteinBox(result_positionX, result_positionY, 2, Local_var);
-      Command_Key = true;
-    }
-    if (!strcmp(KEY, "ENT")) {
-      strcpy(DATA, Local_var);
-      Serial.printf("Updated data: was %s is  %s", DATA, Local_var);
-      strncpy(DATA, Local_var, sizeof_data);  // limit_size so we cannot overwrite the original array size
-      Command_Key = true;
-      VariableChanged = false;
-      EEPROM_WRITE;
-      Keyboardinuse=false;
-      Current_Settings.DisplayPage=-1; //Always return to settings, page -1
-    }
-    if (!Command_Key) {  //Serial.printf(" adding %s on end of variable<%s>\n",KEY,Local_var);
-      strcat(Local_var, KEY);
-    }
-    Serial.printf(" end of loop <%s> \n",Local_var);
-    WriteinBox(result_positionX, result_positionY, 2, Local_var);
-    }
-  if (!ts.isTouched && KeyPressUsed && (millis() > (250 + lastkeypressed))) { KeyPressUsed = false; }
-}
 
 bool IncrementInRange(int _increment, int& Variable, int Varmin, int Varmax, bool Cycle_Round) {  // use wwith swipedir (-1.0,+1)
   int _var;
@@ -787,7 +870,7 @@ bool Swipe2(int& _LRvariable, int LRvarmin, int LRvarmax, bool LRCycle_Round,
   }
 
   if (SwipeFound) { return false; }  // stop doing anything if we have Swipe sensed already (will wait for timed reset)
-  if (!ts.isTouched){ return false; }
+  if (!ts.isTouched){ return false; } // is never triggered! 
   //************* ts must be touched to get here....*****************
   if (TopScreenOnly && (ts.points[0].y >= 180)) { return false; }
   //Capture Snapshot of touch point: in case in changes during tests
@@ -870,8 +953,8 @@ void EEPROM_READ() {
 //************** display housekeeping ************
 void ScreenShow(int LINE, MySettings A, String Text) {
   //gfx->setTextSize(1);
-  GFXBoxPrintf(0, 0, 1, "%s: Seron<%d> UDPPORT<%s> UDPon<%d> ESPon<%d>", Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
-  GFXBoxPrintf(0, text_height, 1, "Page[%i] SSID<%s> PWD<%s>", A.DisplayPage, A.ssid, A.password);
+  GFXBoxPrintf(0, 0, 1, "%s: Seron<%s>UDPon<%s> ESPon<%s>", Text, A.Serial_on On_Off,  A.UDP_ON On_Off, A.ESP_NOW_ON On_Off);
+  GFXBoxPrintf(0, text_height, 1, " SSID<%s> PWD<%s> UDPPORT<%s> ",  A.ssid, A.password,A.UDP_PORT);
 }
 
 void dataline(int line, MySettings A, String Text) {

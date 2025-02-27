@@ -4,22 +4,114 @@
 // Based on  for keyboard  trying to use elements of https://github.com/fbiego/esp32-touch-keyboard/tree/main
 // modified to use char and not strings.
 #include "fonts.h"
+//#include "Touch.h"
+#include <TAMC_GT911.h>
+#include "Struct.h"
 
 char TOP[] = "qQ1wW2eE3rR4tT5yY6uU7iI8oO9pP0";
 char MIDDLE[] = "aA_sS/dD:fF;gG(hH)jJ$kK&lL@";
 char BOTTOM[] = "^^^zZ.xX,cC?vV!bB'nN\"mM-";
 
-
+int caps = 0;
 bool change = false;
 int sz = 3;  //Modulus of key definitions
 int Keyboard_X =0;
 int Keyboard_Y = 240;
 int KBD_size = 2;  //generic size modifier for Kbd 1=small, 2=480 wide
+/*
+              //30 is key V spacing AT SIZE 1
+              //25 IS KEY HEIGHT AT SIZE 1
+*/
 
-  #define hoffset 5
+  #define hoffset 5  // offsets for text in key boxes
   #define voffset 35 
 
 extern int text_height;  //so we can get them if we change heights etc inside functions
+extern void WriteinBox(int h, int v, int size, const char* TEXT);
+extern void EEPROM_WRITE();
+extern void setFont(int);
+
+extern TAMC_GT911 ts;
+extern struct MySettings Current_Settings;
+extern void TouchCrosshair(int);
+
+void Use_Keyboard(char* DATA, int sizeof_data) {
+  static unsigned long lastkeypressed, last_Displayed;
+  static bool KeyPressUsed;
+  static bool Command_Key;
+  static bool Keyboardinuse;
+  static bool VariableChanged = false;
+  char KEY[6]; //array used to pass the character on the key 
+  static char Local_var[30];
+  int result_positionX, result_positionY;
+  setFont(4);
+  result_positionX = KEYBOARD_X()+5;
+  result_positionY = KEYBOARD_Y() - (3 * text_height);
+  
+  if (!VariableChanged && !Keyboardinuse) {
+    strcpy(Local_var, DATA);
+    Serial.printf(" !variable changed  <%s>\n",Local_var);
+    WriteinBox(result_positionX, result_positionY, 1, Local_var);
+    Keyboardinuse=true;
+  }
+  int st;
+  if ((ts.isTouched)) {
+    st = KeyOver(ts.points[0].x, ts.points[0].y, KEY, caps);
+    //Serial.printf(" Pressure test %i  KEYchr<%i> Bool <%i>\n",ts.points[0].size,ts.points[0].x, ts.points[0].y,KEY,st );
+  }
+
+  if (!KeyPressUsed && (ts.isTouched) && (ts.points[0].size > 35) && (KeyOver(ts.points[0].x, ts.points[0].y, KEY, caps))) {
+    Serial.printf(" Keyboard check inputsizeof<%i>   sizeof_here *data(%i)   currentlen<%i>\n", sizeof_data, sizeof(*DATA), strlen(Local_var));
+    KeyPressUsed = true;
+    lastkeypressed = millis();
+    Command_Key = false;
+    //Serial.printf(" Key test %s \n",KEY);
+    if (!strcmp(KEY, "^")) {
+      caps = caps + 1;
+      if (caps > 2) { caps = 0; }  //NB strcmp returns 0 if NO Difference, else position of non match characters
+                                   ///gfx->setFont(&FreeMonoBold18pt7b);
+                                   //text_height=18; //(see the name!!)
+      //font_offset = text_height - 2;  // lift slightly?
+      keyboard(caps);
+      ///gfx->setFont(&FreeMono8pt7b);
+      //text_height=8; //(see the name!!)
+      //font_offset = text_height - 2;  // lift slightly?
+      Command_Key = true;
+    }
+    if (!strcmp(KEY, "DEL")) {
+      Local_var[strlen(Local_var) - 1] = '\0';  // NOTE single inverted comma !!!
+      Command_Key = true;
+    }
+    if (!strcmp(KEY, "CLR")) {
+      Local_var[0] = '\0';
+      Command_Key = true;
+    }
+    if (!strcmp(KEY, "rst")) {
+      strcpy(Local_var, DATA);
+      //Serial.printf(" reset  <%s> \n",Local_var);
+      WriteinBox(result_positionX, result_positionY, 1, Local_var);
+      Command_Key = true;
+    }
+    if (!strcmp(KEY, "ENT")) {
+      strcpy(DATA, Local_var);
+      Serial.printf("Updated data: was %s is  %s", DATA, Local_var);
+      strncpy(DATA, Local_var, sizeof_data);  // limit_size so we cannot overwrite the original array size
+      Command_Key = true;
+      VariableChanged = false;
+      EEPROM_WRITE;
+      Keyboardinuse=false;
+      setFont(0);
+      Current_Settings.DisplayPage=-1; //Always return to settings, page -1
+    }
+    if (!Command_Key) {  //Serial.printf(" adding %s on end of variable<%s>\n",KEY,Local_var);
+      strcat(Local_var, KEY);
+    }
+    Serial.printf(" end of loop <%s> \n",Local_var);
+    WriteinBox(result_positionX, result_positionY, 1, Local_var);
+    }
+  if (!ts.isTouched && KeyPressUsed && (millis() > (250 + lastkeypressed))) { KeyPressUsed = false; }
+}
+
 
 int KEYBOARD_Y(void){
   return Keyboard_Y;
@@ -36,15 +128,16 @@ void DrawKey(int KBD_size, int x, int rows_down, int width, String text ){
      
 void keyboard(int type) {
  static int lasttype;
- int oldsize,oldheight;
+ int oldsize;
  //Serial.printf(" setup keyboard %i  was%i \n",type,lasttype);
   if (type == -1){lasttype=6; return;} // silly number to reset things
-  if (lasttype == type) {return;}
+  if (lasttype == type) {return;} // redraws only if keys change
   Serial.printf("\n*** Start keyboard type %i  last type%i \n",type,lasttype);
   lasttype=type;
   ///gfx->setFont(&FreeMonoBold18pt7b);
-  oldheight=text_height;
-  gfx->setTextSize(KBD_size);
+  setFont(2);
+
+  gfx->setTextSize(1);
   gfx->setTextColor(WHITE);// reset in case its has been changed!
   gfx->fillRect(Keyboard_X,Keyboard_Y,480-Keyboard_X,480-Keyboard_Y,BLACK);
   for (int x = 0; x < 10; x++) {
@@ -68,14 +161,15 @@ void keyboard(int type) {
     gfx->print(BOTTOM[((x * sz) + type)]);
   }
    ///gfx->setFont(&FreeMonoBold12pt7b);
+   setFont(1);
    DrawKey(2,50, 3,30,"CLR");
    DrawKey(2,155, 3,30,"DEL");
    DrawKey(2,190, 3,50,"ENT");
    DrawKey(2,5, 3,30,"rst");
   gfx->drawRoundRect((90*KBD_size)+ Keyboard_X, Keyboard_Y + (90*KBD_size), 60*KBD_size, 25*KBD_size, 3, WHITE);
-  gfx->setTextSize(oldsize);
+  setFont(0);
 }
-extern void TouchCrosshair(int);
+
 
 bool XYinBox(int touchx,int touchy, int h,int v,int width,int height){ //xy position in, xy top left width and height 
    return ((touchx >= h && touchx <= h+width) && (touchy >= v && touchy <= v+height));

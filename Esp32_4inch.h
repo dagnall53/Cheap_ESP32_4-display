@@ -78,15 +78,15 @@ but it does not "do anything" when I try in code)
 #define I2S_BCLK      1       //1
 #define I2S_LRCK      2       //2  
 
-
-
+//#include "Touch.h"
+/* for these pins
 #define TOUCH_INT -1          //-1
 #define TOUCH_RST 38          // important not -1
 #define TOUCH_SDA  19
 #define TOUCH_SCL  45
 #define TOUCH_WIDTH  480
 #define TOUCH_HEIGHT 480
-
+*/
 
 // workss with (https://github.com/moononournation/Arduino_GFX) GFX 1.3.1 where:
 
