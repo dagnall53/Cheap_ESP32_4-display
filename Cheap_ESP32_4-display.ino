@@ -411,6 +411,8 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         dataline(1, Current_Settings, "Current");
         long rssiValue = WiFi.RSSI();
         GFXBorderBoxPrintf(Full4Center, " WIfi %i",rssiValue);
+        gfx->setCursor(80,380);
+        gfx->print(" IP:");gfx->println(WiFi.localIP());
        }
  
 
@@ -1398,9 +1400,9 @@ void Audio_setup(){
 
 }
 
-// void ShowData(bool& Line_Ready, char* buf, uint8_t font, uint32_t TEXT_Colour) {  //&sets pointer so I can modify Line_Ready in this function
-//   //if (Line_Ready){
-//   if (buf[0] != 0) {
+ void ShowData(bool& Line_Ready, char* buf ) {  //&sets pointer so I can modify Line_Ready in this function
+//if (Line_Ready){
+  if (buf[0] != 0) {
 //     WriteLine = WriteLine + 1;
 //     if (WriteLine * font > (NumberoftextLines * 2)) { WriteLine = 1; }
 //     int32_t ypos = 8 + (WriteLine * font * (TEXT_HEIGHT / 2));
@@ -1415,17 +1417,17 @@ void Audio_setup(){
 //       return;
 //     }
 //     if (TEXT_Colour == TFT_BLUE) {
-//       Serial.printf("UDP     :%s", buf);
-//       buf[0] = 0;
-//       return;
+      Serial.printf("UDP     :%s \n", buf);
+      buf[0] = 0;
+      return;
 //     }
 //     if (TEXT_Colour == TFT_WHITE) {
 //       Serial.printf("Serial  :%s", buf);
 //       buf[0] = 0;
 //       return;
 //     }
-//   }
-// }
+   }
+ }
 void connectwithsettings() {
   uint32_t StartTime =millis();
   gfx->print(" Using EEPROM settings");
@@ -1444,26 +1446,27 @@ void TestInputsOutputs() {
   //   ShowData(line_1, nmea_1, Current_Settings.ListTextSize, TFT_WHITE);
   // }
 //   if (Current_Settings.UDP_ON) {
-//     Test_U();
-//  //   ShowData(line_U, nmea_U, Current_Settings.ListTextSize, TFT_BLUE);
+   Test_U();
+   ShowData(line_U, nmea_U);
+   line_U=false;
 //   }
  }
 
 void Test_U() {  // check if udp packet  has arrived
-  // static int Skip_U = 1;
-  // if (!line_U) {  // only process if we have dealt with the last line.
-  //   nmea_U[0] = 0x00;
-  //   int packetSize = Udp.parsePacket();
-  //   if (packetSize) {  // Deal with UDP packet
-  //     if (packetSize >= (BufferLength + 4)) {
-  //       Udp.flush();
-  //       return;
-  //     }  // Simply discard if too long
-  //     int len = Udp.read(nmea_U, BufferLength);
-  //     byte b = nmea_U[0];
-  //     nmea_U[len] = 0;
-  //     line_U = true;
-  //   }  // udp PACKET DEALT WITH
-//  }
+   static int Skip_U = 1;
+  if (!line_U) {  // only process if we have dealt with the last line.
+    nmea_U[0] = 0x00;
+    int packetSize = Udp.parsePacket();
+    if (packetSize) {  // Deal with UDP packet
+      if (packetSize >= (BufferLength + 4)) {
+        Udp.flush();
+        return;
+      }  // Simply discard if too long
+      int len = Udp.read(nmea_U, BufferLength);
+      byte b = nmea_U[0];
+      nmea_U[len] = 0;
+      line_U = true;
+    }  // udp PACKET DEALT WITH
+ }
 }
 
