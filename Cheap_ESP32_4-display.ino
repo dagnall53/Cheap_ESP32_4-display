@@ -5,6 +5,25 @@ From scratch build!
 */
 // * Start of Arduino_GFX setting
 
+
+//******  Wifi stuff 
+#include <WiFi.h>
+#include <WiFiUdp.h>
+WiFiUDP Udp;
+#define BufferLength 500
+bool line_1;
+char nmea_1[500];
+
+bool line_U = false;
+char nmea_U[BufferLength];  // NMEA buffer for UDP input port
+// *************  ESP-NOW variables and functions in ESP_NOW_files************
+bool line_EXT;
+char nmea_EXT[500];
+bool EspNowIsRunning = false;
+
+
+
+
 #include <Arduino_GFX_Library.h>
 //select pin definitions for installed GFX version (test with 1.3.8. and 1.3.1)
 // Original version for GFX 1.3.1 only. #include "GUITIONESP32-S3-4848S040_GFX_133.h"
@@ -70,7 +89,7 @@ Audio audio;
 int UDP_PORT_NUMBER;
 // use page -100 for any swipe testing 
 // change key (first parameter) to set defaults
-MySettings Default_Settings = {2, 0, "N2K0183-proto", "12345678", "2002", false, true, true };
+MySettings Default_Settings = {5, 0, "GUESTBOAT", "12345678", "2002", false, true, true };
 MySettings Saved_Settings;
 MySettings Current_Settings;
 struct Displaysettings {
@@ -113,7 +132,7 @@ int depth,sog,stw,windspeed,winddir;};
 String Fontname;
 int text_height = 12;      //so we can get them if we change heights etc inside functions
 int text_offset = 12;      //offset is not equal to height, as subscripts print lower than 'height'
-int text_char_width = 12;  // useful for monotype? only NOT USED YET! Try tft.getTextBounds(string, x, y, &x1, &y1, &w, &h);
+int text_char_width = 12;  // useful for monotype? only NOT USED YET! Try gfx->getTextBounds(string, x, y, &x1, &y1, &w, &h);
 
 
 //colour order  background, text, border 
@@ -381,12 +400,19 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         GFXBorderBoxPrintf(SSID,1,Current_Settings.ssid);
         GFXBorderBoxPrintf(PASSWORD,1,Current_Settings.password);
         GFXBorderBoxPrintf(UDPPORT,1,Current_Settings.UDP_PORT);
+         //GFXBorderBoxPrintf(Full4Center, "Mac: Fonts");
         setFont(0);
       dataline(1, Current_Settings, "Current");
       setFont(1);
       //while (ts.sTouched{yield(); Serial.println("yeilding -1");}
       }
-
+         if (millis() > slowdown + 1000) {
+        slowdown = millis();
+        dataline(1, Current_Settings, "Current");
+        long rssiValue = WiFi.RSSI();
+        GFXBorderBoxPrintf(Full4Center, " WIfi %i",rssiValue);
+       }
+ 
 
         if (CheckButton(SSID)){Current_Settings.DisplayPage=-2;};
         if (CheckButton(PASSWORD)){Current_Settings.DisplayPage=-3;};
@@ -408,16 +434,19 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         GFXBorderBoxPrintf(Full2Center, "Set WIFI");
         GFXBorderBoxPrintf(Full3Center, "See NMEA");
         GFXBorderBoxPrintf(Full4Center, "Check Fonts");
+        GFXBorderBoxPrintf(Full5Center, "Reset");
        
       }
       if (millis() > slowdown + 1000) {
         slowdown = millis();
+        dataline(1, Current_Settings, "Current");
        }
        if (CheckButton(Full0Center)){Current_Settings.DisplayPage=0;delay(100);}
        if (CheckButton(Full1Center)){Current_Settings.DisplayPage=1;delay(100);}
        if (CheckButton(Full2Center)){Current_Settings.DisplayPage=-1;delay(100);}
        if (CheckButton(Full3Center)){Current_Settings.DisplayPage=4;delay(100);}
        if (CheckButton(Full4Center)){Current_Settings.DisplayPage=-10;delay(100);}
+       if (CheckButton(Full5Center)){Current_Settings.DisplayPage=-1;delay(100);}
 
       break;
     case 1:
@@ -685,13 +714,36 @@ void setup() {
   #endif
 
   EEPROM_READ();  // setup and read saved variables into Saved_Settings
-
+    setFont(5);
+  gfx->setCursor(0, 100);gfx->setTextColor(WHITE);
+   gfx->println(" EEPROM READ ");
   Current_Settings = Saved_Settings;
   if (Current_Settings.EpromKEY != Default_Settings.EpromKEY) {
     Current_Settings = Default_Settings;
     EEPROM_WRITE();
     Serial.println("Setting to EEPROM defaults");
   }
+
+  connectwithsettings();
+
+  if (WiFi.status() == WL_CONNECTED){    
+    gfx->println(" Connected ! ");
+    Serial.println("connected.: printing data:");}
+   
+  
+  
+  gfx->println(" Using :");
+  gfx->print(WiFi.SSID());
+  gfx->print(" ");
+  gfx->println(WiFi.localIP());
+  
+  Serial.print(" *Running with:  ssid<");
+  Serial.print(WiFi.SSID());Serial.print(">  Ip:"); 
+  Serial.println (WiFi.localIP());
+  //strcpy(Current_Settings.ssid, WiFi.SSID().c_str());  // why??
+  //strcpy(Current_Settings.password, WiFi.psk().c_str());  //why??
+  Udp.begin(atoi(Current_Settings.UDP_PORT));
+
 
   setFont(0);
 
@@ -716,6 +768,7 @@ void loop() {
   ts.read();
   //TouchSample(TouchData);
   Display(Current_Settings.DisplayPage);  //EventTiming("STOP");
+  TestInputsOutputs();
   //EventTiming(" loop time touch sample display");
   //Use_Keyboard(Current_Settings.password,sizeof(Current_Settings.password));
   audio.loop(); //
@@ -980,7 +1033,7 @@ void EEPROM_READ() {
   EEPROM.begin(512);
   Serial.println("READING EEPROM");
   EEPROM.get(0, Saved_Settings);
-  //dataline(1,Saved_Settings, "EEPROM_Read");
+  dataline(1,Saved_Settings, "EEPROM_Read");
 }
 
 //************** display housekeeping ************
@@ -1345,4 +1398,72 @@ void Audio_setup(){
 
 }
 
+// void ShowData(bool& Line_Ready, char* buf, uint8_t font, uint32_t TEXT_Colour) {  //&sets pointer so I can modify Line_Ready in this function
+//   //if (Line_Ready){
+//   if (buf[0] != 0) {
+//     WriteLine = WriteLine + 1;
+//     if (WriteLine * font > (NumberoftextLines * 2)) { WriteLine = 1; }
+//     int32_t ypos = 8 + (WriteLine * font * (TEXT_HEIGHT / 2));
+//     Line_Ready = false;
+//     gfx->setTextColor(WHITE);
+//     gfx->fillRect(0, ypos, XMAX, font * (TEXT_HEIGHT / 2), TFT_BLACK);
+//     gfx->drawString(buf, 0, ypos, font);
+//     Line_Ready = false;
+//     if (TEXT_Colour == TFT_GREEN) {
+//       Serial.printf("esp_now :%s", buf);
+//       buf[0] = 0;
+//       return;
+//     }
+//     if (TEXT_Colour == TFT_BLUE) {
+//       Serial.printf("UDP     :%s", buf);
+//       buf[0] = 0;
+//       return;
+//     }
+//     if (TEXT_Colour == TFT_WHITE) {
+//       Serial.printf("Serial  :%s", buf);
+//       buf[0] = 0;
+//       return;
+//     }
+//   }
+// }
+void connectwithsettings() {
+  uint32_t StartTime =millis();
+  gfx->print(" Using EEPROM settings");
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(Current_Settings.ssid, Current_Settings.password);
+  while ((WiFi.status() != WL_CONNECTED)&& (millis() <= StartTime+ 10000)) { //Give it 10 seconds 
+    delay(500);
+    gfx->print(".");
+  }
+}
+
+void TestInputsOutputs() {
+  // if (Current_Settings.ESP_NOW_ON) { ShowData(line_EXT, nmea_EXT, Current_Settings.ListTextSize, TFT_GREEN); }
+  // if (Current_Settings.Serial_on) {
+  //   Test_Serial_1();
+  //   ShowData(line_1, nmea_1, Current_Settings.ListTextSize, TFT_WHITE);
+  // }
+//   if (Current_Settings.UDP_ON) {
+//     Test_U();
+//  //   ShowData(line_U, nmea_U, Current_Settings.ListTextSize, TFT_BLUE);
+//   }
+ }
+
+void Test_U() {  // check if udp packet  has arrived
+  // static int Skip_U = 1;
+  // if (!line_U) {  // only process if we have dealt with the last line.
+  //   nmea_U[0] = 0x00;
+  //   int packetSize = Udp.parsePacket();
+  //   if (packetSize) {  // Deal with UDP packet
+  //     if (packetSize >= (BufferLength + 4)) {
+  //       Udp.flush();
+  //       return;
+  //     }  // Simply discard if too long
+  //     int len = Udp.read(nmea_U, BufferLength);
+  //     byte b = nmea_U[0];
+  //     nmea_U[len] = 0;
+  //     line_U = true;
+  //   }  // udp PACKET DEALT WITH
+//  }
+}
 
