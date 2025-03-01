@@ -99,6 +99,8 @@ struct Displaysettings {
 Displaysettings Display_default = { false, true, false, false, false, false };
 Displaysettings Display_Setting;
 
+int MasterFont; //global for font! Idea is to use to reset font after 'temporary' seletion of another fone
+
 struct BarChart {
   int topleftx, toplefty, width, height, bordersize, value, rangemin, rangemax, visible; 
   uint16_t barcolour;
@@ -141,9 +143,11 @@ Button TopRightbutton = {405,0,75,75,5,BLUE,WHITE,BLACK,false,0};
 Button BottomRightbutton = {405,405,75,75,5,BLUE,WHITE,BLACK,false,0};
 Button BottomLeftbutton = {0,405,75,75,5,BLUE,WHITE,BLACK,false,0};
 
-Button SSID ={30,100,420,35,5,WHITE,BLACK,BLUE,false};
-Button PASSWORD={30,140,420,35,5,WHITE,BLACK,BLUE,false};
-Button UDPPORT={30,180,420,35,5,WHITE,BLACK,BLUE,false}; 
+Button SSID ={30,50,420,35,5,WHITE,BLACK,BLUE,false};
+Button PASSWORD={30,90,420,35,5,WHITE,BLACK,BLUE,false};
+Button UDPPORT={30,130,420,35,5,WHITE,BLACK,BLUE,false}; 
+Button Spare={30,170,420,35,5,WHITE,BLACK,BLUE,false}; 
+Button Terminal={00,170,480,310,5,WHITE,BLACK,BLUE,false}; 
 //for selections
 Button Full0Center ={80,0,320,75,5,BLUE,WHITE,BLACK,false,0};
 Button Full1Center ={80,80,320,75,5,BLUE,WHITE,BLACK,false,0};
@@ -218,15 +222,34 @@ void WindArrow(int x,int y, int rad ,int wind ,bool to){
 
 }
 
+void ShowToplinesettings(MySettings A, String Text){
+  int local;
+  local=MasterFont;
+  setFont(0); // SETS MasterFont, so cannot use MasterFont directly in last line!
+     long rssiValue = WiFi.RSSI();
+     gfx->setTextSize(1);
+     GFXBoxPrintf(0, 0, 1, "%s: Serial<%s> UDP<%s> ESP<%s>", Text, A.Serial_on On_Off,  A.UDP_ON On_Off, A.ESP_NOW_ON On_Off);
+     GFXBoxPrintf(0, text_height, 1, "SSID<%s> PWD<%s> UDPPORT<%s>",  A.ssid, A.password,A.UDP_PORT);
+    gfx->fillRect(0, text_height*2, 480, text_height, WHITE); // manual equivalent of my function so I can print IP address!
+    gfx->setTextColor(BLACK);
+    gfx->setCursor(0, (text_height*2) + (text_offset));  
+    gfx->print(" IP:");gfx->print(WiFi.localIP());gfx->print(" RSSI: ");gfx->print(rssiValue);
+    setFont(local);
+}
+void ShowToplinesettings( String Text){
+   ShowToplinesettings(Current_Settings,Text);}
+
+
 void Display(int page) { // setups for alternate pages to be selected by page.
   static int LastPageselected;
   // some local variables for tests;
-  static int font;
+  
   static int SwipeTestLR, SwipeTestUD,volume;
   static bool RunSetup;
   static unsigned int slowdown,timer2;
-  static float wind;
-  float temp,oldtemp;
+  static float wind,SOG,Depth;
+  float temp,oldtemp;  
+  static int fontlocal;
   char Tempchar[30];
   String tempstring; 
   int FS =1; // for font size test
@@ -247,10 +270,9 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE);
-        font = 0;
         SwipeTestLR = 0;
         SwipeTestUD = 0;
-        setFont(font);
+        setFont(0);
         GFXBoxPrintf(0, 250, 3, "-swipe test- ");
       }
 
@@ -271,19 +293,19 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE);
-        font = 0;
+        fontlocal = 0;
         SwipeTestLR = 0;
         SwipeTestUD = 0;
-        setFont(font);
+        setFont(fontlocal);
         GFXBoxPrintf(0, 250, 3, "-TEST Colours- ");
       }
 
       if (millis() >= slowdown + 10000) {
         slowdown = millis();
         gfx->fillScreen(BLACK);
-        font=font+1; if (font >10) {font=0;}
+        fontlocal=fontlocal+1; if (fontlocal >10) {fontlocal=0;}
         GFXBoxPrintf(0, 50, 2, "Colours check");
-              GFXBoxPrintf(0, 100, FS, "Font size %i",FS);
+              GFXBoxPrintf(0, 100, FS, "Font size %i",fontlocal);
       DisplayCheck(true);
       }
       
@@ -322,23 +344,23 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         slowdown = millis();
         gfx->fillScreen(BLUE);
         //wind=wind+9; if (wind>360) {wind=0;gfx->fillScreen(BLUE);} 
-        font=font+1;if (font>15) {font=0;} 
+        fontlocal=fontlocal+1;if (fontlocal>15) {fontlocal=0;} 
         //setFont(0);
-        // dataline(1, Current_Settings, "Current"); 
+        // ShowToplinesettings("Current"); 
         temp=12.3;
-        Serial.print("about to set");Serial.print(font); 
-        setFont(font);
+        Serial.print("about to set");Serial.print(fontlocal); 
+        setFont(fontlocal);
         Serial.print(" setting fontname");Serial.println(Fontname);
       }
         if (millis() > timer2 + 500) {
         timer2 = millis();
        temp= random(-9000, 9000);
        temp=temp/1000;
-       setFont(font); 
+       setFont(fontlocal); 
        Fontname.toCharArray(Tempchar,30,0);
        setFont(3);
-       GFXBorderBoxPrintf(0,0,480,75,1,5,BLUE,WHITE,BLACK, "FONT:%i name%s",font,Tempchar); 
-       setFont(font); 
+       GFXBorderBoxPrintf(0,0,480,75,1,5,BLUE,WHITE,BLACK, "FONT:%i name%s",fontlocal,Tempchar); 
+       setFont(fontlocal); 
        GFXBorderBoxPrintf(0,150,480,330,1,5,BLUE,WHITE,BLUE, "Test %4.2f height<%i>",temp,text_height);  
       // if((2*text_height)<180){GFXBorderBoxPrintf(0,160,480,(2*text_height)+10,2,5,BLUE,WHITE,BLACK, "two X %4.2f",temp); } 
       //  if((3*text_height)<180){GFXBorderBoxPrintf(0,265,480,(3*text_height)+10,3,5,BLUE,WHITE,BLACK, "%4.2f",temp);  }
@@ -394,25 +416,22 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       if (RunSetup) {
         gfx->fillScreen(BLACK);
         gfx->setTextColor(WHITE, BLACK);
-        gfx->setTextSize(1);
+        gfx->setTextSize(1); 
+        ShowToplinesettings("Current");
         setFont(4);
         gfx->setCursor(180, 180);      
         GFXBorderBoxPrintf(SSID,1,Current_Settings.ssid);
         GFXBorderBoxPrintf(PASSWORD,1,Current_Settings.password);
         GFXBorderBoxPrintf(UDPPORT,1,Current_Settings.UDP_PORT);
-         //GFXBorderBoxPrintf(Full4Center, "Mac: Fonts");
-        setFont(0);
-      dataline(1, Current_Settings, "Current");
-      setFont(1);
+        GFXBorderBoxPrintf(Terminal,1," Terminal text here");
+       setFont(4);
       //while (ts.sTouched{yield(); Serial.println("yeilding -1");}
       }
          if (millis() > slowdown + 1000) {
         slowdown = millis();
-        dataline(1, Current_Settings, "Current");
-        long rssiValue = WiFi.RSSI();
-        GFXBorderBoxPrintf(Full4Center, " WIfi %i",rssiValue);
-        gfx->setCursor(80,380);
-        gfx->print(" IP:");gfx->println(WiFi.localIP());
+
+        //print recieved data in terminal here 
+ 
        }
  
 
@@ -425,9 +444,10 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       break;
     case 0:
       if (RunSetup) {
-        setFont(3);//GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, 
+       //GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, 
         //uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
-        
+        ShowToplinesettings("Now"); 
+        setFont(3);
         GFXBorderBoxPrintf(TopLeftbutton,"Page-");
         GFXBorderBoxPrintf(TopRightbutton,"Page+");
         setFont(3);
@@ -441,14 +461,15 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       }
       if (millis() > slowdown + 1000) {
         slowdown = millis();
-        dataline(1, Current_Settings, "Current");
+        ShowToplinesettings("Current");
+        //ShowToplinesettings("Current");
        }
        if (CheckButton(Full0Center)){Current_Settings.DisplayPage=0;delay(100);}
        if (CheckButton(Full1Center)){Current_Settings.DisplayPage=1;delay(100);}
        if (CheckButton(Full2Center)){Current_Settings.DisplayPage=-1;delay(100);}
        if (CheckButton(Full3Center)){Current_Settings.DisplayPage=4;delay(100);}
        if (CheckButton(Full4Center)){Current_Settings.DisplayPage=-10;delay(100);}
-       if (CheckButton(Full5Center)){Current_Settings.DisplayPage=-1;delay(100);}
+       if (CheckButton(Full5Center)){ESP.restart();}
 
       break;
     case 1:
@@ -460,7 +481,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
          GFXBorderBoxPrintf(BottomLeftbutton,"vol-");
          GFXBorderBoxPrintf(BottomRightbutton,"vol+");
          setFont(1);
-        gfx->setCursor(0, 50);gfx->setTextSize(1);
+        gfx->setCursor(0, 80);gfx->setTextSize(1); // Full0Center is 75, add 5 for space.
         listDir(SD, "/", 0);
        }
      
@@ -479,21 +500,19 @@ void Display(int page) { // setups for alternate pages to be selected by page.
     
     case 2:
     if (RunSetup) {
-        GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 2 -SPEED");
+        //GFXBoxPrintf(0,480-(text_height*2),  2, "PAGE 2 -SPEED");
+        GFXBorderBoxPrintf(20,100,440,360,1,5,BLUE,BLACK,BLACK, "%3.0f",SOG);
       }
-      if (millis() > slowdown + 1000) {
+      if (millis() > slowdown + 200) {
         //gfx->fillScreen(BLUE);
         slowdown = millis();
-        dataline(1, Current_Settings, "Current");
-        wind=wind+1; if (wind>360) {wind=0;}
-        temp=wind/10.0;
-       // dataline(1, Current_Settings, "Current");
-      
-        setFont(11);
-     // GFXBoxPrintf(0,150,  2, BLUE,BLUE, "%4.2f", oldtemp);  
-      GFXBoxPrintf(0,150,  2, BLACK,BLUE, "%4.2f", temp);
-      oldtemp=temp;  
-      setFont(0);
+        ShowToplinesettings("Current");
+        SOG=SOG+1; if (SOG>360) {SOG=0;}
+        temp=SOG/10.0;
+     
+        setFont(10);
+        UpdateBB_DATA(20,100,440,360,1,5,BLUE,BLACK,BLACK, "%3.1f\nKts",temp);
+           setFont(0);
       }
       
 
@@ -512,11 +531,9 @@ case 3:
         slowdown = millis();
         WindArrow(240,240,240,wind,WindpointToBoat);
         wind=wind+13; if (wind>360) {wind=0; WindpointToBoat=!WindpointToBoat;}
-        
         //Box in middle for wind dir / speed
         //int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
         GFXBorderBoxPrintf(240-70,240-40, 140,80, 2,5,BLUE,BLACK,BLACK, "%3.0f",wind);
-       // dataline(1, Current_Settings, "Current");
       }
 
         if (CheckButton(TopLeftbutton)){Current_Settings.DisplayPage=Current_Settings.DisplayPage-1;delay(300);}
@@ -541,17 +558,10 @@ case 3:
         wind=wind+13; if (wind>360) {wind=0;WindpointToBoat=!WindpointToBoat;}  // sikmulate 4 boxes
         
         WindArrow(360,120,120,wind,true);
-        // full writes including borders etc
-        // GFXBorderBoxPrintf(0,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.2fKts",wind/24);
-        // GFXBorderBoxPrintf(0,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.1fM",wind/3);
-        // //GFXBorderBoxPrintf(240,0, 235,235, 1,5,BLUE,BLACK,BLACK, "c%3.2F",wind*1.1);
-        // GFXBorderBoxPrintf(240,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.1Fkts",wind/13);
-
         UpdateBB_DATA(0,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.2fKts",wind/24);
         UpdateBB_DATA(0,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.1fM",wind/3);
         //UpdateBB_DATA(240,0, 235,235, 1,5,BLUE,BLACK,BLACK, "c%3.2F",wind*1.1);
         UpdateBB_DATA(240,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.1Fkts",wind/13);
-       // dataline(1, Current_Settings, "Current");
       }
 
 //        TouchCrosshair(20); 
@@ -590,9 +600,10 @@ default:
 }
 
 
-void setFont(int font) {
-
-  switch (font) { //select font and automatically set height/offset based on character '['
+void setFont(int fontinput) {
+  MasterFont = fontinput;
+  gfx->setTextSize(1);
+  switch (fontinput) { //select font and automatically set height/offset based on character '['
     // set the heights and offset to print [ in boxes. Heights in pixels are NOT the point heights!
     case 0:  // SMALL 8pt
       Fontname = "FreeMono8pt7b";
@@ -682,10 +693,11 @@ void setFont(int font) {
       text_height = (FreeMono8pt7bGlyphs[0x3D].height) + 1;
       text_offset = -(FreeMono8pt7bGlyphs[0x3D].yOffset);
       text_char_width = 12;
+      MasterFont=0;
 
       break;
   }
-  gfx->setTextSize(1);
+
 
 }
 
@@ -755,7 +767,7 @@ void setup() {
   SD_Setup();
   Audio_setup();
   keyboard(-1);  //reset keyboard display update settings
-  dataline(1, Current_Settings, "Current");
+  //ShowToplinesettings("Current");
   gfx->println(F("***START Screen***"));
   delay(100);  // .1 seconds
    Display(100); // trigger default 
@@ -796,6 +808,7 @@ void DisplayCheck(bool invertcheck) {
   static unsigned long updatetiming;
   static unsigned long LoopTime;
   static int Color;
+
   static bool ips;
   LoopTime = millis() - updatetiming;
   updatetiming = millis();
@@ -803,6 +816,7 @@ void DisplayCheck(bool invertcheck) {
     //***** Timed updates *******
     timedInterval = millis() + 300;
     //Serial.printf("Loop Timing %ims",LoopTime);
+    setFont(3);
     ScreenShow(1, Current_Settings, "Current");
 
 
@@ -1040,9 +1054,9 @@ void EEPROM_READ() {
 
 //************** display housekeeping ************
 void ScreenShow(int LINE, MySettings A, String Text) {
-  //gfx->setTextSize(1);
+  long rssiValue = WiFi.RSSI();
   GFXBoxPrintf(0, 0, 1, "%s: Seron<%s>UDPon<%s> ESPon<%s>", Text, A.Serial_on On_Off,  A.UDP_ON On_Off, A.ESP_NOW_ON On_Off);
-  GFXBoxPrintf(0, text_height, 1, " SSID<%s> PWD<%s> UDPPORT<%s> ",  A.ssid, A.password,A.UDP_PORT);
+  GFXBoxPrintf(0, text_height, 1, "Wifi:  SSID<%s> PWD<%s> UDPPORT<%s>  rssi<%i> ",  A.ssid, A.password,A.UDP_PORT,rssiValue);
 }
 
 void dataline(int line, MySettings A, String Text) {
@@ -1417,6 +1431,11 @@ void Audio_setup(){
 //       return;
 //     }
 //     if (TEXT_Colour == TFT_BLUE) {
+  /*void UpdateBB_DATA(int h, int v, int width, int height, int textsize, 
+int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+
+  */
+  if (Current_Settings.DisplayPage=-1) {UpdateBB_DATA(00,170,480,310,1,5,WHITE,BLACK,BLUE, buf);}
       Serial.printf("UDP     :%s \n", buf);
       buf[0] = 0;
       return;
@@ -1430,8 +1449,10 @@ void Audio_setup(){
  }
 void connectwithsettings() {
   uint32_t StartTime =millis();
-  gfx->print(" Using EEPROM settings");
+  gfx->println(" Using EEPROM settings");
+  WiFi.setHostname("NMEA_Display");
   WiFi.mode(WIFI_AP_STA);
+   gfx->println(" Starting WiFi");
   WiFi.begin(Current_Settings.ssid, Current_Settings.password);
   while ((WiFi.status() != WL_CONNECTED)&& (millis() <= StartTime+ 10000)) { //Give it 10 seconds 
     delay(500);
