@@ -107,7 +107,7 @@ struct BarChart {
 };
 
 struct Button { int h, v, width, height, bordersize;
-uint16_t backcol,textcol,bordercol;
+uint16_t backcol,textcol,BorderColor;
 bool Keypressed,KeySent;
 unsigned long LastDetect; 
 };
@@ -424,7 +424,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         GFXBorderBoxPrintf(PASSWORD,1,Current_Settings.password);
         GFXBorderBoxPrintf(UDPPORT,1,Current_Settings.UDP_PORT);
         GFXBorderBoxPrintf(Terminal,1," Terminal text here");
-       setFont(4);
+       setFont(0);
       //while (ts.sTouched{yield(); Serial.println("yeilding -1");}
       }
          if (millis() > slowdown + 1000) {
@@ -445,7 +445,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
     case 0:
       if (RunSetup) {
        //GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, 
-        //uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+        //uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
         ShowToplinesettings("Now"); 
         setFont(3);
         GFXBorderBoxPrintf(TopLeftbutton,"Page-");
@@ -511,7 +511,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
         temp=SOG/10.0;
      
         setFont(10);
-        UpdateBB_DATA(20,100,440,360,1,5,BLUE,BLACK,BLACK, "%3.1f\nKts",temp);
+        UpdateCentered(20,100,440,360,1,5,BLUE,BLACK,BLACK, "%3.1f\nKts",temp);
            setFont(0);
       }
       
@@ -532,7 +532,7 @@ case 3:
         WindArrow(240,240,240,wind,WindpointToBoat);
         wind=wind+13; if (wind>360) {wind=0; WindpointToBoat=!WindpointToBoat;}
         //Box in middle for wind dir / speed
-        //int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+        //int h, int v, int width, int height, int textsize, int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
         GFXBorderBoxPrintf(240-70,240-40, 140,80, 2,5,BLUE,BLACK,BLACK, "%3.0f",wind);
       }
 
@@ -558,10 +558,10 @@ case 3:
         wind=wind+13; if (wind>360) {wind=0;WindpointToBoat=!WindpointToBoat;}  // sikmulate 4 boxes
         
         WindArrow(360,120,120,wind,true);
-        UpdateBB_DATA(0,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.2fKts",wind/24);
-        UpdateBB_DATA(0,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.1fM",wind/3);
-        //UpdateBB_DATA(240,0, 235,235, 1,5,BLUE,BLACK,BLACK, "c%3.2F",wind*1.1);
-        UpdateBB_DATA(240,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.1Fkts",wind/13);
+        UpdateCentered(0,0, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.2fKts",wind/24);
+        UpdateCentered(0,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%4.1fM",wind/3);
+        //UpdateCentered(240,0, 235,235, 1,5,BLUE,BLACK,BLACK, "c%3.2F",wind*1.1);
+        UpdateCentered(240,240, 235,235, 1,5,BLUE,BLACK,BLACK, "%3.1Fkts",wind/13);
       }
 
 //        TouchCrosshair(20); 
@@ -574,7 +574,7 @@ case 3:
 default:
      if (RunSetup) {
         setFont(3);//GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, 
-        //uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+        //uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
         GFXBorderBoxPrintf(Full0Center, "-Top page-");
         GFXBorderBoxPrintf(TopLeftbutton,"Page-");
         GFXBorderBoxPrintf(TopRightbutton,"Page+");
@@ -817,7 +817,7 @@ void DisplayCheck(bool invertcheck) {
     timedInterval = millis() + 300;
     //Serial.printf("Loop Timing %ims",LoopTime);
     setFont(3);
-    ScreenShow(1, Current_Settings, "Current");
+    ScreenShow(Current_Settings, "Current");
 
 
     if (invertcheck) {
@@ -1039,7 +1039,6 @@ void TouchValueShow(int offset, bool debug) {  // offset display down in pixels
 //*********** EEPROM functions *********
 void EEPROM_WRITE() {
   // save my current settings
-  //dataline(1,Current_Settings, "EEPROM_save");
   Serial.println("SAVING EEPROM");
   EEPROM.put(0, Current_Settings);
   EEPROM.commit();
@@ -1049,24 +1048,24 @@ void EEPROM_READ() {
   EEPROM.begin(512);
   Serial.println("READING EEPROM");
   EEPROM.get(0, Saved_Settings);
-  dataline(1,Saved_Settings, "EEPROM_Read");
+  dataline(Saved_Settings, "EEPROM_Read");
 }
 
 //************** display housekeeping ************
-void ScreenShow(int LINE, MySettings A, String Text) {
+void ScreenShow( MySettings A, String Text) {
   long rssiValue = WiFi.RSSI();
   GFXBoxPrintf(0, 0, 1, "%s: Seron<%s>UDPon<%s> ESPon<%s>", Text, A.Serial_on On_Off,  A.UDP_ON On_Off, A.ESP_NOW_ON On_Off);
   GFXBoxPrintf(0, text_height, 1, "Wifi:  SSID<%s> PWD<%s> UDPPORT<%s>  rssi<%i> ",  A.ssid, A.password,A.UDP_PORT,rssiValue);
 }
 
-void dataline(int line, MySettings A, String Text) {
-  ScreenShow(line, A, Text);
-  // Serial.printf("%d Dataline display %s: Ser<%d> UDPPORT<%d> UDP<%d>  ESP<%d> \n ", A.EpromKEY, Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
-  // Serial.print("SSID <");
-  // Serial.print(A.ssid);
-  // Serial.print(">  Password <");
-  // Serial.print(A.password);
-  // Serial.println("> ");
+void dataline( MySettings A, String Text) {
+  ScreenShow( A, Text);
+  Serial.printf("%d Dataline display %s: Ser<%d> UDPPORT<%d> UDP<%d>  ESP<%d> \n ", A.EpromKEY, Text, A.Serial_on, A.UDP_PORT, A.UDP_ON, A.ESP_NOW_ON);
+  Serial.print("SSID <");
+  Serial.print(A.ssid);
+  Serial.print(">  Password <");
+  Serial.print(A.password);
+  Serial.println("> ");
 }
 boolean CompStruct(MySettings A, MySettings B) {  // does not check ssid and password
   bool same = false;
@@ -1134,7 +1133,9 @@ void GFXBoxPrintf(int h, int v, int size, const char* fmt, ...) {  //complete ob
   int len = strlen(msg);
   WriteinBox(h, v, size, msg);  // includes font size
 }
-
+//void GFXBoxPrintf(int h, int v, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
+//  GFXBoxPrintf(h, v,1,fmt);
+//}
 
 
 void GFXPrintf(int h, int v, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
@@ -1150,7 +1151,7 @@ void GFXPrintf(int h, int v, const char* fmt, ...) {  //complete object type sui
 // more general versions including box width size Box draws border OUTside topleft position by 'bordersize'
 
 void WriteinBorderBox(int h, int v, int width, int height, int textsize, int bordersize, 
-  uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
+  uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
   int16_t x,y,TBx1,TBy1;
   uint16_t TBw,TBh;
   gfx->setTextSize(textsize);
@@ -1160,7 +1161,7 @@ void WriteinBorderBox(int h, int v, int width, int height, int textsize, int bor
   //gfx->fillRect(TBx1 , TBy1 , TBw , TBh , WHITE); delay(100); // visulize what the data is!
   // move to center is  add (width-2*bordersize-TBw)/2 ?
   //move vertical is add (height -2*bordersize-TBh)/2
-  gfx->fillRect(h , v , width , height , bordercol);
+  gfx->fillRect(h , v , width , height , BorderColor);
   gfx->fillRect(h+ bordersize, v+ bordersize, width- (2 * bordersize), height- (2 * bordersize), backgroundcol);
   gfx->setTextColor(textcol);
   
@@ -1180,17 +1181,8 @@ uint16_t backcol,textcol,barcol;
 }; but button misses out textsize
 */
 void GFXBorderBoxPrintf(Button button,const char* fmt, ...){
-  static char msg[300] = { '\0' };                                                                                                                                          // used in message buildup
-  va_list args;
-  va_start(args, fmt);
-  vsnprintf(msg, 128, fmt, args);
-  va_end(args);
-  int len = strlen(msg);
-  WriteinBorderBox(button.h, button.v, button.width, button.height, 1, button.bordersize, button.backcol, button.textcol, button.bordercol, msg);
-}
-
-
-
+  GFXBorderBoxPrintf(button,1,fmt);
+  }
 void GFXBorderBoxPrintf(Button button,int textsize,const char* fmt, ...){
   static char msg[300] = { '\0' };                                                                                                                                          // used in message buildup
   va_list args;
@@ -1198,20 +1190,24 @@ void GFXBorderBoxPrintf(Button button,int textsize,const char* fmt, ...){
   vsnprintf(msg, 128, fmt, args);
   va_end(args);
   int len = strlen(msg);
-  WriteinBorderBox(button.h, button.v, button.width, button.height, textsize, button.bordersize, button.backcol, button.textcol, button.bordercol, msg);
+  WriteinBorderBox(button.h, button.v, button.width, button.height, textsize, button.bordersize, button.backcol, button.textcol, button.BorderColor, msg);
 }
 void GFXBorderBoxPrintf(int h, int v, int width, int height, int textsize, int bordersize, 
-  uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+  uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
   static char msg[300] = { '\0' };                                                                                                                                          // used in message buildup
   va_list args;
   va_start(args, fmt);
   vsnprintf(msg, 128, fmt, args);
   va_end(args);
   int len = strlen(msg);
-  WriteinBorderBox(h, v, width, height, textsize, bordersize, backgroundcol, textcol, bordercol, msg);
+  WriteinBorderBox(h, v, width, height, textsize, bordersize, backgroundcol, textcol, BorderColor, msg);
 }
-void UpdateBB_DATA(int h, int v, int width, int height, int textsize, 
-int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+void UpdateCentered(Button button,const char* fmt, ...){ // Centers text in space 
+  UpdateCentered(button.h, button.v, button.width, button.height, 1, 
+button.bordersize, button.backcol, button.textcol,button.BorderColor, fmt);
+}
+void UpdateCentered(int h, int v, int width, int height, int textsize, 
+int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
   static char msg[300] = { '\0' };
   // calculate new offsets to just center on original box - minimum redraw of blank 
   int16_t x,y,TBx1,TBy1;
@@ -1234,7 +1230,27 @@ int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, co
  // WriteinBorderBox(h, v, width, height, textsize, 0, backgroundcol, textcol, backgroundcol, msg);
 }
 
+void UpdateLines(Button button,const char* fmt, ...){ // Types sequential lines in the button space 
+ static int Printline;
+ int typingspaceH;
+ typingspaceH=button.height-2*button.bordersize;
+ int LinesOfType;
+ int16_t x,y;
+ LinesOfType=typingspaceH/(text_height+2);
+   static char msg[300] = { '\0' };
+   va_list args;
+  va_start(args, fmt);
+  vsnprintf(msg, 128, fmt, args);
+  va_end(args);
+  int len = strlen(msg);
+  x=button.h+button.bordersize; y=button.v + button.bordersize+ (text_offset);
+  gfx->setCursor(x,y+(Printline*(text_height+2)));
+  gfx->fillRect(x,y,
+  button.width- (2 * button.bordersize),text_height+2, button.backcol);
+  gfx->println(msg);
+  Printline=Printline+1; if (Printline>=(LinesOfType-1)){Printline=0;}
 
+}
 
 
 
@@ -1431,11 +1447,11 @@ void Audio_setup(){
 //       return;
 //     }
 //     if (TEXT_Colour == TFT_BLUE) {
-  /*void UpdateBB_DATA(int h, int v, int width, int height, int textsize, 
-int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t bordercol, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,bordercol, const char* fmt, ...)
+  /*void UpdateCentered(int h, int v, int width, int height, int textsize, 
+int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, const char* fmt, ...) {  //Print in a box.(h,v,width,height,textsize,bordersize,backgroundcol,textcol,BorderColor, const char* fmt, ...)
 
   */
-  if (Current_Settings.DisplayPage=-1) {UpdateBB_DATA(00,170,480,310,1,5,WHITE,BLACK,BLUE, buf);}
+  if (Current_Settings.DisplayPage==-1) {UpdateLines(Terminal, buf);}
       Serial.printf("UDP     :%s \n", buf);
       buf[0] = 0;
       return;
