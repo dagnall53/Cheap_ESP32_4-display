@@ -66,7 +66,7 @@ TAMC_GT911 ts = TAMC_GT911(TOUCH_SDA, TOUCH_SCL, TOUCH_INT, TOUCH_RST, TOUCH_WID
 #define JPEG_FILENAME_LOGO "/logo.jpg" // logo in jpg on sd card
 //audio 
 #include "Audio.h"
-#define AUDIO_FILENAME_01 "/ChildhoodMemory.mp3"
+#define AUDIO_FILENAME_01 "/HotelCalifornia.mp3"
 #define AUDIO_FILENAME_02 "/SoundofSilence.mp3"
 #define AUDIO_FILENAME_03 "/MoonlightBay.mp3"
 #define AUDIO_FILENAME_START "/ship-bell.mp3"
@@ -149,7 +149,7 @@ Button UDPPORT={30,130,420,35,5,WHITE,BLACK,BLUE,false};
 Button Spare={30,170,420,35,5,WHITE,BLACK,BLUE,false}; 
 Button Terminal={00,170,480,310,5,WHITE,BLACK,BLUE,false}; 
 //for selections
-Button Full0Center ={80,0,320,75,5,BLUE,WHITE,BLACK,false,0};
+Button Full0Center ={80,35,320,30,5,BLUE,WHITE,BLACK,false,0};
 Button Full1Center ={80,80,320,75,5,BLUE,WHITE,BLACK,false,0};
 Button Full2Center ={80,160,320,75,5,BLUE,WHITE,BLACK,false,0};
 Button Full3Center ={80,240,320,75,5,BLUE,WHITE,BLACK,false,0};
@@ -327,9 +327,9 @@ void Display(int page) { // setups for alternate pages to be selected by page.
       }
       if (ts.isTouched) {
           TouchCrosshair(20); }
-        if (CheckButton(TopLeftbutton)){volume=volume+1; if(volume>21){volume=0;};
+        if (CheckButton(TopLeftbutton)){volume=volume+1; if(volume>21){volume=21;};
           Serial.println("LEFT");GFXBoxPrintf(80, 0, 2, WHITE,BLUE, " LEFT   %i\n",volume);audio.setVolume(volume);delay(300);}
-        if (CheckButton(TopRightbutton)){volume=volume-1;if(volume<1){volume=21;};
+        if (CheckButton(TopRightbutton)){volume=volume-1;if(volume<1){volume=0;};
           Serial.println("RIGHT");GFXBoxPrintf(80, 0,2, WHITE,BLUE, " RIGHT  %i\n",volume);audio.setVolume(volume);delay(300);}
       if  (!audio.isRunning()){ audio.connecttoFS(SD, AUDIO_FILENAME_02);}
       if (CheckButton(Full0Center)){Current_Settings.DisplayPage=0;delay(100);}
@@ -475,7 +475,7 @@ void Display(int page) { // setups for alternate pages to be selected by page.
     case 1:
       if (RunSetup) {
         setFont(3);
-        GFXBorderBoxPrintf(Full0Center,"SD Contents Run audio");
+        GFXBorderBoxPrintf(Full0Center,"SD Contents / Run Audio vol%i",volume);
         gfx->setTextColor(WHITE, BLUE);
          
          GFXBorderBoxPrintf(BottomLeftbutton,"vol-");
@@ -1078,14 +1078,13 @@ boolean CompStruct(MySettings A, MySettings B) {  // does not check ssid and pas
   return same;
 }
 
-void Writeat(int h, int v, int size, const char* text) {  //Write text at h,v (using fontoffset to use TOP LEFT of text convention)
-  gfx->setCursor(h, v + (text_offset * size));            // offset up/down for GFXFONTS that start at Bottom left. Standard fonts start at TOP LEFT
+void Writeat(int h, int v, const char* text) {  //Write text at h,v (using fontoffset to use TOP LEFT of text convention)
+  gfx->setCursor(h, v + (text_offset ));            // offset up/down for GFXFONTS that start at Bottom left. Standard fonts start at TOP LEFT
   gfx->print(text);
-  gfx->setTextSize(1);
 }
-void Writeat(int h, int v, const char* text) {
-  Writeat(h, v, 1, text);
-}
+// void Writeat(int h, int v, const char* text) {
+//   Writeat(h, v, text);
+// }
 // try out void getTextBounds(const char *string, int16_t x, int16_t y, int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
 void WriteinBox(int h, int v, int size, const char* TEXT,uint16_t TextColor,uint16_t BackColor) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
   int width,height;
@@ -1093,13 +1092,13 @@ void WriteinBox(int h, int v, int size, const char* TEXT,uint16_t TextColor,uint
   gfx->fillRect(h, v, 480, text_height * size, BackColor);
   gfx->setTextColor(TextColor);
   gfx->setTextSize(size);
-  Writeat(h, v, size, TEXT);  // text offset is dealt with in write at
+  Writeat(h, v,  TEXT);  // text offset is dealt with in write at
 }
 void WriteinBox(int h, int v, int size, const char* TEXT) {  //Write text in filled box of text height at h,v (using fontoffset to use TOP LEFT of text convention)
   gfx->fillRect(h, v, 480, text_height * size, WHITE);
   gfx->setTextColor(BLACK);
   gfx->setTextSize(size);
-  Writeat(h, v, size, TEXT);  // text offset is dealt with in write at
+  Writeat(h, v,  TEXT);  // text offset is dealt with in write at
 }
 
 void GFXBoxPrintf(int h, int v, int size, uint16_t TextColor,uint16_t BackColor, const char* fmt, ...) {  //complete object type suitable for holding the information needed by the macros va_start, va_copy, va_arg, and va_end.
@@ -1231,11 +1230,11 @@ int bordersize, uint16_t backgroundcol, uint16_t textcol, uint16_t BorderColor, 
 }
 
 void UpdateLines(Button button,const char* fmt, ...){ // Types sequential lines in the button space 
- static int Printline;
- int typingspaceH;
+ static int Printline;int LinesOfType,characters;int16_t x,y;
+ char limitedWidth[80];
+  int typingspaceH,typingspaceW;
  typingspaceH=button.height-2*button.bordersize;
- int LinesOfType;
- int16_t x,y;
+ typingspaceW=button.width-2*button.bordersize;
  LinesOfType=typingspaceH/(text_height+2);
    static char msg[300] = { '\0' };
    va_list args;
@@ -1243,13 +1242,14 @@ void UpdateLines(Button button,const char* fmt, ...){ // Types sequential lines 
   vsnprintf(msg, 128, fmt, args);
   va_end(args);
   int len = strlen(msg);
-  x=button.h+button.bordersize; y=button.v + button.bordersize+ (text_offset);
-  gfx->setCursor(x,y+(Printline*(text_height+2)));
-  gfx->fillRect(x,y,
-  button.width- (2 * button.bordersize),text_height+2, button.backcol);
-  gfx->println(msg);
-  Printline=Printline+1; if (Printline>=(LinesOfType-1)){Printline=0;}
-
+//   strncpy(limitedWidth,msg,40);
+//   //xy for printing of max 40 characters relative to top left Need to update to include text width? 
+   x=button.h+button.bordersize; y=button.v + button.bordersize+ (text_offset);
+   gfx->setCursor(x,y+(Printline*(text_height+2)));
+//   gfx->fillRect(x,y+((Printline-1)*(text_height+2))-1,typingspaceW,(text_height+4),button.backcol);
+   gfx->println(msg);
+  Printline=Printline+1; if (len>=40){Printline=Printline+1;}
+  if (Printline>=(LinesOfType)){Printline=1;gfx->fillRect(x,y-(text_offset),typingspaceW,typingspaceH,WHITE);}
 }
 
 
